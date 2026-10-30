@@ -681,6 +681,14 @@ body{padding-left:0}
 @media(max-width:640px){body.atgate #hdr .ledger,body.atgate #hdr .lednote{display:none}.gate .bridgegrid{gap:var(--sp-2)}.gate .gateq{font:var(--t-title-s);margin:var(--sp-4) 0 var(--sp-2)}}
 #nav .navchip.skipped{color:var(--mute);opacity:.7}#nav .navchip.skipped b{background:none;border:1.5px dashed var(--mute);color:var(--mute)}#nav .navchip small{font:var(--t-caption)}
 .choice .card{display:flex;flex-direction:column;margin:0}.choice .card p:last-of-type{flex:1}.choice .card button{align-self:flex-start;margin-top:var(--sp-3)}
+/* Brief diagrams: the wide layout on desktop, the narrow one on phones. */
+.dg svg{display:block;width:100%;height:auto;max-width:760px;margin:0 auto}.dg .dg-n{display:none}@media(max-width:640px){.dg .dg-w{display:none}.dg .dg-n{display:block}}
+.dg-lab{font:var(--t-caption);fill:var(--ink)}.dg-lab.m{fill:var(--mute)}.dg-lab.b{font-weight:var(--w-demi)}.dg-lab.cost{fill:var(--cost);font-weight:var(--w-demi)}
+.dg-frame{fill:var(--panel);stroke:var(--line);stroke-width:1.5}.dg-obj{fill:var(--line);stroke:var(--mute);stroke-width:1.5;stroke-linejoin:round}.dg-dark{fill:var(--mute)}.dg-ink{fill:var(--ink)}
+.dg-stock{fill:var(--green-soft-2)}.dg-safe{fill:var(--green-soft);stroke:var(--green-ink);stroke-width:1.2;stroke-dasharray:4 3}.dg-plank{fill:var(--mute)}
+.dg-tag{fill:var(--panel);stroke:var(--cost);stroke-width:1.2}.dg-waste{fill:var(--cost)}.dg-cut{stroke:var(--panel);stroke-width:1.5}
+.dg-flow{stroke:var(--mute);stroke-width:2}.dg-head{fill:var(--mute)}.dg-dash{fill:none;stroke:var(--cost);stroke-width:1.5;stroke-dasharray:4 3}
+.dg-say{margin:var(--sp-4) 0 0;font:var(--t-body-s)}
 #nav .navdiv.on{background:var(--green-ink);width:4px;box-shadow:0 0 0 3px var(--green-soft)}
 .bridgegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:640px){.bridgegrid{grid-template-columns:1fr}}
 @media (max-width:640px){
@@ -2018,7 +2026,39 @@ const CH_TAG={
   3:'One school-meal kitchen, one morning, up to 2,500 children.',
   4:'One regency, one semester. You place the kitchens, size them, and choose who supplies them.',
 };
-VIEWS.c1brief=()=>chapterHero(1,T(CH_TAG[1]))+navRow(nextLbl(G.phase+1));
+/* Brief diagrams (Practice 1–2): what the player will do, in one glance, before any text. Inline SVG in the Asphalt
+   tokens (.dg-* classes), icons drawn as plain shapes. Two layouts: wide (left to right) for desktop and narrow (top
+   to bottom) for phones, each with a viewBox close to its rendered width so labels stay at caption size. Every number
+   is read from WARMUP or the engine. */
+const dgLab=(x,y,t,cls='',a='middle')=>`<text class="dg-lab ${cls}" x="${x}" y="${y}" text-anchor="${a}">${esc(t)}</text>`;
+const dgArrow=(x1,y1,x2,y2,cls='')=>{const a=Math.atan2(y2-y1,x2-x1),h=(d,s)=>`${(x2-9*Math.cos(a)+s*5*Math.sin(a)).toFixed(1)},${(y2-9*Math.sin(a)-s*5*Math.cos(a)).toFixed(1)}`;
+  return`<line class="dg-flow ${cls}" x1="${x1}" y1="${y1}" x2="${(x2-8*Math.cos(a)).toFixed(1)}" y2="${(y2-8*Math.sin(a)).toFixed(1)}"/><polygon class="dg-head ${cls}" points="${x2},${y2} ${h(0,1)} ${h(0,-1)}"/>`;};
+const DG_ICON={  // centred on (0,0)
+  warehouse:'<path class="dg-obj" d="M-22 -2L0 -16 22 -2V16H-22z"/><rect class="dg-dark" x="-7" y="3" width="14" height="13"/>',
+  truck:'<rect class="dg-obj" x="-24" y="-13" width="31" height="19" rx="2"/><path class="dg-obj" d="M7 -7h9l6 7v6H7z"/><circle class="dg-ink" cx="-14" cy="8" r="4"/><circle class="dg-ink" cx="13" cy="8" r="4"/>',
+  shopper:'<circle class="dg-dark" cy="-13" r="5.5"/><path class="dg-dark" d="M-9 12v-7a9 9 0 0 1 18 0v7z"/>',
+  bin:'<rect class="dg-waste" x="-12" y="-14" width="24" height="4" rx="1"/><path class="dg-waste" d="M-10 -8h20l-2.5 22h-15z"/><path class="dg-cut" d="M-4 -4v14M4 -4v14"/>',
+};
+const dgIcon=(k,x,y)=>`<g transform="translate(${x} ${y})">${DG_ICON[k]}</g>`;
+const dgSay=(dec,score)=>`<p class="dg-say"><b>${T('You decide:')}</b> ${T(dec)}<br><b>${T('You\'re scored on:')}</b> ${T(score)}</p>`;
+/* The grocery shelf, 230 × 170: two products side by side, each a stock bar under a dashed safety-stock band. Bread
+   carries its shelf-life tag. Returns the drawing and where its waste line leaves the bread bar. */
+function dgShelf(x,y){const col=(cx,name)=>`${dgLab(cx,44,T('Safety stock'),'m')}<rect class="dg-safe" x="${cx-32}" y="50" width="64" height="22"/><rect class="dg-stock" x="${cx-32}" y="72" width="64" height="60"/>${dgLab(cx,106,T('Stock'))}${dgLab(cx,154,T(name),'b')}`;
+  return{svg:`<g transform="translate(${x} ${y})"><rect class="dg-frame" width="230" height="170" rx="8"/>${dgLab(12,23,T('Store shelf'),'b','start')}
+<rect class="dg-tag" x="110" y="9" width="110" height="20" rx="10"/>${dgLab(165,23,T('{n}-day shelf life',{n:W('G_BREAD_LIFE')}),'cost')}
+${col(65,'Dry goods')}${col(165,'Bread')}<rect class="dg-plank" x="10" y="132" width="210" height="5" rx="2"/></g>`,out:[x+197,y+110]};}
+function groceryDiagram(){
+  const lead=T('{n}-day lead time',{n:W('G_LEAD')}),waste=T('expired → waste');
+  const w=(()=>{const sh=dgShelf(200,20);return`<svg class="dg-w" viewBox="0 0 640 205" role="img" aria-label="${esc(T('Supplier → truck → store shelf → shoppers'))}">
+${dgIcon('warehouse',48,98)}${dgLab(48,140,T('Supplier'),'b')}${dgArrow(84,110,190,110)}${dgIcon('truck',136,92)}${dgLab(136,132,lead,'m')}
+${sh.svg}${dgArrow(438,110,548,110)}${dgIcon('shopper',580,104)}${dgIcon('shopper',604,104)}${dgLab(592,140,T('Shoppers'),'b')}
+<path class="dg-dash" d="M${sh.out[0]} ${sh.out[1]}Q430 168 448 172"/>${dgIcon('bin',462,176)}${dgLab(482,182,waste,'cost','start')}</svg>`;})();
+  const n=(()=>{const sh=dgShelf(10,126);return`<svg class="dg-n" viewBox="0 0 330 400" role="img" aria-label="${esc(T('Supplier → truck → store shelf → shoppers'))}">
+${dgIcon('warehouse',40,30)}${dgLab(76,35,T('Supplier'),'b','start')}${dgArrow(40,52,40,120)}${dgIcon('truck',86,84)}${dgLab(116,90,lead,'m','start')}
+${sh.svg}<path class="dg-dash" d="M${sh.out[0]} ${sh.out[1]}Q270 240 290 262"/>${dgIcon('bin',292,276)}${dgLab(320,316,waste,'cost','end')}
+${dgArrow(40,298,40,344)}${dgIcon('shopper',32,372)}${dgIcon('shopper',54,372)}${dgLab(80,376,T('Shoppers'),'b','start')}</svg>`;})();
+  return`<div class="card dg fade">${w}${n}${dgSay('how much to order and how much extra to keep, for each product.','stockouts and waste.')}</div>`;}
+VIEWS.c1brief=()=>chapterHero(1,T(CH_TAG[1]))+groceryDiagram()+navRow(nextLbl(G.phase+1));
 VIEWS.c2brief=()=>chapterHero(2,T(CH_TAG[2]))+navRow(nextLbl(G.phase+1));
 /* Pages a chapter has not built yet show only their name (removed as each chapter lands). */
 const pendingPage=()=>card(`<h2>${pageName(G.phase)}</h2>`)+navRow(nextLbl(G.phase+1));
@@ -3004,6 +3044,18 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"You decide:":{id:"Kamu memutuskan:"},
+"You're scored on:":{id:"Kamu dinilai dari:"},
+"Stock":{id:"Stok"},
+"Store shelf":{id:"Rak toko"},
+"{n}-day shelf life":{id:"Tahan {n} hari"},
+"{n}-day lead time":{id:"Waktu tunggu {n} hari"},
+"expired → waste":{id:"kedaluwarsa → terbuang"},
+"Supplier → truck → store shelf → shoppers":{id:"Pemasok → truk → rak toko → pembeli"},
+"Supplier":{id:"Pemasok"},
+"Shoppers":{id:"Pembeli"},
+"how much to order and how much extra to keep, for each product.":{id:"berapa banyak memesan dan berapa stok tambahan yang disimpan, untuk tiap produk."},
+"stockouts and waste.":{id:"kehabisan stok dan barang terbuang."},
 "Introduction":{id:"Pengantar"},
 "Intro":{id:"Pengantar"},
 "Choose your path":{id:"Pilih jalurmu"},
@@ -4198,7 +4250,7 @@ function devStatus(){
 }
 function devPanel(){
   const rows=Object.entries(Object.assign({},PARAMS,WARMUP)).map(([id,p])=>`<tr><td><code>${id}</code></td><td>${p.v}</td><td>${p.unit}</td><td><span class="tag ${p.src[0]}">${p.src}</span></td><td>${esc(p.note)}</td></tr>`).join('');
-  return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<div class="row"><label>Jump to chapter <select onchange="A.devJump(this.value)"><option value="intro" ${G.chapter===0&&G.phase===0?'selected':''}>Intro · What is MBG?</option><option value="choice" ${G.chapter===0&&G.phase===1?'selected':''}>Choice · basics or the MBG Project</option>${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n} · ${PARTS[partOf(n)].title} · ${partOf(n)===1?'Practice':'Stage'} ${inPart(n)}: ${CHAPTER_PAGES[n].title}</option>`).join('')}<option value="gate" ${G.chapter===2&&PHASES[G.phase]&&PHASES[G.phase][0]==='gate'?'selected':''}>Gate · Ready for the MBG Project? (after Practice 2)</option><option value="direct">3 · Stage 1 on the direct path (basics skipped)</option></select></label><button onclick="A.devRun()">Autoplay Chapter 5 trap scenarios</button><label>Autoplay chapter <select id="devch">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n}</option>`).join('')}</select></label><button onclick="A.devChapter(+document.getElementById('devch').value)">Run</button></div><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
+  return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<div class="row"><label>Jump to chapter <select style="max-width:100%" onchange="A.devJump(this.value)"><option value="intro" ${G.chapter===0&&G.phase===0?'selected':''}>Intro · What is MBG?</option><option value="choice" ${G.chapter===0&&G.phase===1?'selected':''}>Choice · basics or the MBG Project</option>${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n} · ${PARTS[partOf(n)].title} · ${partOf(n)===1?'Practice':'Stage'} ${inPart(n)}: ${CHAPTER_PAGES[n].title}</option>`).join('')}<option value="gate" ${G.chapter===2&&PHASES[G.phase]&&PHASES[G.phase][0]==='gate'?'selected':''}>Gate · Ready for the MBG Project? (after Practice 2)</option><option value="direct">3 · Stage 1 on the direct path (basics skipped)</option></select></label><button onclick="A.devRun()">Autoplay Chapter 5 trap scenarios</button><label>Autoplay chapter <select id="devch">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n}</option>`).join('')}</select></label><button onclick="A.devChapter(+document.getElementById('devch').value)">Run</button></div><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
 }
 A.devRun=()=>{const ch=G.chapter,r=runScenarios();G.chapter=ch;resetGame();render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
 /* Jumps set the path a player would have taken to get there: 1, 2 and the gate are the basics; 3–5 keep the current
