@@ -677,6 +677,8 @@ body{padding-left:0}
 .c2plan td{vertical-align:middle}.c2plan th{text-align:left!important}.c2plan td.mv{white-space:nowrap}.c2plan .seg button{font:var(--t-caption);padding:4px 8px}
 .maps>div:only-child{max-width:520px}
 .gate .gateq{margin:var(--sp-6) 0 var(--sp-3)}.gate .gatebtns{gap:var(--sp-3);flex-wrap:wrap}.gate ul{margin:0;padding-left:var(--sp-5)}
+/* Phones: on the gate the sticky header drops its ledger tiles, so the question and both buttons fit one screen. */
+@media(max-width:640px){body.atgate #hdr .ledger{display:none}.gate .bridgegrid{gap:var(--sp-2)}.gate .gateq{font:var(--t-title-s);margin:var(--sp-4) 0 var(--sp-2)}}
 #nav .navdiv.on{background:var(--green-ink);width:4px;box-shadow:0 0 0 3px var(--green-soft)}
 .bridgegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:640px){.bridgegrid{grid-template-columns:1fr}}
 @media (max-width:640px){
@@ -2796,6 +2798,7 @@ const A={
 };
 function render(){
   setChapter(G.chapter);
+  if(typeof document!=='undefined')document.body.classList.toggle('atgate',PHASES[shownPhase()][0]==='gate');  // phones hide the ledger on the gate
   if(typeof document!=='undefined'&&document.documentElement.lang!==LANG){document.documentElement.lang=LANG;document.title=fullTitle();}
   renderHeader();
   const sp=shownPhase(),ph=PHASES[sp][0];
