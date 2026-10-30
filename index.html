@@ -633,6 +633,15 @@ body{padding-left:0}
 #nav .navs.locked .navs-k{background:#f3f4f5}
 #nav .navs[disabled]{opacity:1}
 #nav .navc::after,#nav .navs::after{content:none}
+/* Chapter progress row and chapter-sized ledgers */
+#nav .navch{display:flex;align-items:center;gap:var(--sp-1);max-width:1100px;margin:0 auto var(--sp-2);overflow-x:auto;scrollbar-width:thin}
+#nav .navchip{flex:none;display:inline-flex;align-items:center;gap:var(--sp-1);padding:2px var(--sp-2) 2px 2px;border-radius:var(--r-pill);font:var(--t-caption);font-weight:var(--w-demi);color:var(--mute)}
+#nav .navchip b{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--ink);font:var(--t-caption);font-weight:var(--w-bold)}
+#nav .navchip.done{color:var(--green-ink)}#nav .navchip.done b{background:var(--green-soft);color:var(--green-ink)}
+#nav .navchip.on{background:var(--green-soft);color:var(--green-ink)}#nav .navchip.on b{background:var(--green-ink);color:var(--panel)}
+#nav .navchsep{flex:none;width:16px;height:2px;background:var(--line)}
+.ledger.n1{grid-template-columns:minmax(0,1fr);max-width:520px}.ledger.n2{grid-template-columns:repeat(2,minmax(0,1fr));max-width:760px}
+.bridgegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:640px){.bridgegrid{grid-template-columns:1fr}}
 @media (max-width:640px){
   #nav{padding:var(--sp-2) var(--sp-2) 0}
   #nav .nav1{gap:2px}
@@ -887,16 +896,39 @@ const PAIRS = {
 };
 const DIMS = {reach:'Reach',nutrition:'Nutritional adequacy',safety:'Food safety',plate:'Plate value',fiscal:'Fiscal discipline',local:'Local economic impact'};
 
+/* ---- Learning ladder: five chapters (design choices, not data) ----
+   Chapters 1–2 are warm-ups in familiar settings (a grocery store, a bakery); 3–5 are MBG in growing scope.
+   ALLOW_SKIP_WARMUPS: when true, a player may skip Chapters 1–2, and Chapter 3's brief adds the safety-stock line.
+   CHAPTER_SCOPE scopes the MBG engine per chapter: periods (null = PARAMS.PERIODS), whether events and weather are
+   drawn, and how many provinces the player runs. Chapters 1–3 do not use the semester engine. */
+const ALLOW_SKIP_WARMUPS=false;
+const CHAPTER_IDS=[1,2,3,4,5];
+const CHAPTER_SCOPE={
+  1:{periods:null,events:false,regions:0},
+  2:{periods:null,events:false,regions:0},
+  3:{periods:null,events:false,regions:0},
+  4:{periods:1,events:false,regions:1},
+  5:{periods:null,events:true,regions:2},
+};
+
 /* ============ SECTION 2 · ENGINE ============ */
 let G;
+/* A reset restarts the current chapter: the chapter, what earlier chapters hand forward (carry) and chapter
+   timings survive it. */
 function resetGame(){
-  G = {phase:0,
+  const keep=G?{chapter:G.chapter,carry:G.carry,chTimes:G.chTimes}:{chapter:1,carry:{},chTimes:{}};
+  G = {...keep,wu:null,phase:0,
     dec:{values:['delivered','exposure','cost'],posture:null,regions:[],regency:{},radius:{},siting:{},
       sourcing:{arch:null,rails:false,receipts:false},
       menu:[0,1,2,3,4].map(()=>({m:'M1',a:'none'})),  // Monday..Friday; repeats every week
       delivery:{batch:'single',lastRun:'farthest'}},
     plans:[],world:null,ctx:null,draft:null,eventLog:[],results:[],showDims:false,lastPhase:-1,ui:{activeRun:0,nRuns:1},review:null,anim:null,cuPending:false};
+  chapterDefaults();
 }
+/* Chapter start state: what each chapter takes from the ones before it (G.carry) and the levers it fixes. */
+function chapterDefaults(){}
+/* Chapter end: what a finished chapter hands forward. */
+function chapterCarry(n){}
 resetGame();
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -908,7 +940,8 @@ function rngFrom(seed){let a=seed>>>0;return function(){a=(a+0x6D2B79F5)|0;let t
 /* Seed = hash of the decision vector (R5). Identical decisions reproduce identical runs.
    The priority ranking is left out: it weights the score, not the kitchens, so reordering it must not redraw the dice. */
 const PF=()=>P('PERIOD_DAYS')/P('OPERATING_DAYS');  // share of a year in one period
-const NP=()=>P('PERIODS');
+const CH=()=>CHAPTER_SCOPE[(G&&G.chapter)||5];
+const NP=()=>CH().periods||P('PERIODS');
 const yearOf=p=>Math.ceil(p/2),semOf=p=>(p-1)%2+1;
 /* Priority weights: the pair ranked first counts 50%, second 30%, third 20% of the overall score. */
 const PRIORITY_WEIGHTS=[0.5,0.3,0.2];  // estimate (design choice)
@@ -1367,8 +1400,8 @@ function T(s,v){
 }
 T.missing=new Set();
 const LOCALE={en:'en-US',id:'id-ID',es:'es-ES'};
-const PHASES=[['brief','Brief'],['setup1','Priorities'],['setup2','Provinces'],['kitchens','Kitchens'],['sourcing','Sourcing'],['budget','Budget'],['setup3','Menu'],['year','Y1 Semester 1'],['year','Y1 Semester 2'],['year','Y2 Semester 1'],['year','Y2 Semester 2'],['score','Scorecard'],['debrief','Debrief']];
-const YEAR_PHASE0=6; // Semester p (1..4) lives at G.phase = p + 3; the engine's ctx.y is the semester index
+let PHASES=[['brief','Brief'],['setup1','Priorities'],['setup2','Provinces'],['kitchens','Kitchens'],['sourcing','Sourcing'],['budget','Budget'],['setup3','Menu'],['year','Y1 Semester 1'],['year','Y1 Semester 2'],['year','Y2 Semester 1'],['year','Y2 Semester 2'],['score','Scorecard'],['debrief','Debrief']];
+let YEAR_PHASE0=6; // Semester p (1..4) lives at G.phase = p + 3; the engine's ctx.y is the semester index
 const periodLabel=p=>T('Year {y} · Semester {s}',{y:yearOf(p),s:semOf(p)});
 const periodShort=p=>T('Y{y} S{s}',{y:yearOf(p),s:semOf(p)});
 const $=id=>document.getElementById(id);
@@ -1536,9 +1569,21 @@ const nextLbl=i=>T('Next: {page} →',{page:catOf(i)===catOf(i-1)?pageName(i):fu
 const NAV_ICONS={brief:'<path d="M7 4h8l4 4v12H7z"/><path d="M15 4v4h4"/><path d="M10 12h6M10 16h6"/>',setup1:'<path d="M5 7h10M5 12h14M5 17h7"/><path d="M18 4l2 3h-4z"/>',setup2:'<path d="M12 21s-6-6-6-11a6 6 0 0 1 12 0c0 5-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',kitchens:'<path d="M4 20V10l8-5 8 5v10z"/><path d="M9 20v-5h6v5"/>',sourcing:'<circle cx="6" cy="7" r="2"/><circle cx="6" cy="17" r="2"/><path d="M8 7l8 5M8 17l8-5"/><rect x="16" y="10" width="4" height="4" rx="1"/>',budget:'<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16" cy="14.5" r="1.6"/>',setup3:'<rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M11 6v12M11 12h9.5"/>',year:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',score:'<path d="M5 20V11M12 20V5M19 20v-7"/>',debrief:'<path d="M5 5h14v10H10l-4 4v-4H5z"/>'};
 /* Two-level navigation: four categories on top, the shown category's pages underneath. Pages still unlock one at a
    time; a category is done when all its pages are, live when it holds the current step, locked until reached. */
-const NAV_CATS=[['brief',[0]],['plan',[1,2,3,4,5,6]],['run',[7,8,9,10]],['results',[11,12]]];
+let NAV_CATS=[['brief',[0]],['plan',[1,2,3,4,5,6]],['run',[7,8,9,10]],['results',[11,12]]];
 const NAV_CAT_L={brief:null,plan:{en:'Plan',id:'Rencana',es:'Plan'},run:{en:'Run',id:'Jalankan',es:'Jugar'},results:{en:'Results',id:'Hasil',es:'Resultados'}};
 const NAV_CAT_ICON={brief:NAV_ICONS.brief,plan:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9z"/><path d="M8.5 12l2 2 4-4M8.5 17h7"/>',run:'<circle cx="12" cy="12" r="9"/><path d="M10 8.5l5.5 3.5-5.5 3.5z"/>',results:NAV_ICONS.score};
+/* Chapters: each has its own pages, grouped under the same Brief / Plan / Run / Results categories, so the shell
+   (navigation, ledger, run controls) is learned once in Chapter 1. Chapter 5 is the full simulation. A chapter
+   ends on a bridge card ('bridge'), except Chapter 5, which ends on the debrief. */
+const CHAPTER_PAGES={
+  1:{title:'The Grocery Store',short:'Grocery store',phases:[['c1brief','Brief'],['c1policy','Ordering policy'],['c1run','The round'],['bridge','What comes next']],cats:[['brief',[0]],['plan',[1]],['run',[2]],['results',[3]]],y0:0},
+  2:{title:'The Bakery',short:'Bakery',phases:[['c2brief','Brief'],['c2round','Round 1'],['c2round','Round 2'],['bridge','What comes next']],cats:[['brief',[0]],['run',[1,2]],['results',[3]]],y0:0},
+  3:{title:'MBG: One Kitchen, One Morning',short:'One kitchen',phases:[['c3brief','Brief'],['c3plan','Menu and runs'],['c3run','The morning'],['bridge','What comes next']],cats:[['brief',[0]],['plan',[1]],['run',[2]],['results',[3]]],y0:0},
+  4:{title:'MBG: One Region',short:'One region',phases:[['brief','Brief'],['setup2','Province'],['kitchens','Kitchens'],['sourcing','Sourcing'],['setup3','Menu'],['year','Semester 1'],['bridge','What comes next']],cats:[['brief',[0]],['plan',[1,2,3,4]],['run',[5]],['results',[6]]],y0:4},
+  5:{title:'MBG: Two Years',short:'Two years',phases:PHASES,cats:NAV_CATS,y0:YEAR_PHASE0},
+};
+function setChapter(n){const c=CHAPTER_PAGES[n];PHASES=c.phases;NAV_CATS=c.cats;YEAR_PHASE0=c.y0;}
+const chTitle=n=>T(CHAPTER_PAGES[n].title);
 const catOf=i=>NAV_CATS.findIndex(c=>c[1].includes(i));
 const catName=c=>{const k=NAV_CATS[c][0];return k==='brief'?T('Brief'):NAV_CAT_L[k][LANG]||NAV_CAT_L[k].en;};
 /* A page's name in the sub-row, and its full name when seen from outside its category ("Run · Y1 Semester 1"). */
@@ -1555,7 +1600,14 @@ function navHtml(){
   const ix=NAV_CATS[shc][1];
   const subs=ix.length<2?'':`<div class="nav2" role="group" aria-label="${esc(catName(shc))}">${ix.map((i,n)=>{const on=i===sh,live=i===G.phase,done=i<G.phase,locked=i>G.phase,jump=!locked&&!on&&!busy;
     return`${n?'<span class="navsep" aria-hidden="true">›</span>':''}<button class="navs ${on?'on':done?'done':locked?'locked':''} ${live&&!on?'live':''}" ${jump?`onclick="A.view(${i})"`:'disabled'} ${on?'aria-current="page"':''} title="${esc(locked?T('Finish the current step first'):live&&!on?T('you are here'):done&&!on?T('Look back (read-only)'):pageName(i))}"><b class="navs-k">${locked?navSvg(NAV_LOCK,14):done&&!on?navSvg(NAV_TICK,14):n+1}</b><span>${pageName(i)}</span></button>`;}).join('')}</div>`;
-  return`<div class="nav1">${cats}</div>${subs}`;
+  return`${chapterRow()}<div class="nav1">${cats}</div>${subs}`;
+}
+/* Chapter progress 1–5 above the categories. Chapters are played in order; the row only shows where you are
+   (and, when ALLOW_SKIP_WARMUPS is on, offers the jump past Chapters 1–2). */
+function chapterRow(){
+  const cur=G.chapter,skip=ALLOW_SKIP_WARMUPS&&cur<3&&!simRunning();
+  return`<div class="navch" role="list" aria-label="${esc(T('Chapters'))}">${CHAPTER_IDS.map(n=>{const st=n<cur?'done':n===cur?'on':'locked';
+    return`<span class="navchip ${st}" role="listitem" ${n===cur?'aria-current="step"':''} title="${esc(T('Chapter {n} of 5',{n})+': '+chTitle(n))}"><b>${n<cur?navSvg(NAV_TICK,14):n}</b><span>${T(CHAPTER_PAGES[n].short)}</span></span>`;}).join('<span class="navchsep" aria-hidden="true"></span>')}${skip?`<button class="ghost small" onclick="A.skipWarmups()">${T('Skip to Chapter 3 →')}</button>`:''}</div>`;
 }
 function navScroll(){const r=document.querySelector('#nav .nav2'),a=r&&r.querySelector('.navs.on');if(r&&a&&r.scrollWidth>r.clientWidth)r.scrollLeft=Math.max(0,a.offsetLeft-r.clientWidth/2+a.offsetWidth/2);}
 /* Logo: a stack of reusable steel meal trays (ompreng), the top one full (rice, egg, greens, banana), with a small
@@ -1567,10 +1619,25 @@ function renderHeader(){
   const last=G.results.filter(Boolean).slice(-1)[0];const L=last&&last.ledger;
   const steps=navHtml();
   const cu=v=>`data-cu="${v}"`;
+  const wu=G.chapter<4?ledgerWarmup():null;
   const pair=id=>{const d=PAIRS[id].dims;return`<div class="pair ${id}"><div class="t"><span>${T(PAIRS[id].label)} ${info(id==='delivered'?'uptake':id==='exposure'?'hazard':'ledger')}</span><span class="pscore"><b ${L?cu(L[id]):''}>${L?sc(L[id]):'–'}</b><small>/ 100</small></span></div><div class="dims">${d.map(x=>`<span>${T(DIMS[x])}<br><b ${L&&!(x==='plate'&&!L.plateVisible)?cu(L[x]):''}>${L?sc(L[x])+(x==='plate'&&!L.plateVisible?'%':''):'·'}</b>${L&&!(x==='plate'&&!L.plateVisible)?'<small>/100</small>':''}</span>`).join('')}</div><p class="pnote">${T('= average of the two, each scored 0–100')}</p></div>`;};
   const lang=`<div class="seg lang" role="group" aria-label="${esc(T('Language'))}">${LANGS.map(([c,s,n])=>`<button class="${LANG===c?'on':''}" lang="${c}" title="${n}" aria-pressed="${LANG===c}" onclick="A.setLang('${c}')">${s}</button>`).join('')}</div>`;
   if($('nav')){$('nav').innerHTML=steps;navScroll();}
-  $('hdr').innerHTML=`<div class="brand"><div class="brandmark">${logoSvg('')}<div><small>Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</small><h1>${gameTitle()}</h1></div></div><span class="mute" style="font-size:12px">${last?T('Ledger after {p}',{p:periodLabel(last.y)}):T('Ledger fills in after the first semester')}</span><span class="row" style="gap:8px">${lang}${canBack()?`<button class="ghost" onclick="A.back()">← ${T('Back')}</button>`:''}<button class="ghost" onclick="A.restart()">${T('Restart')}</button></span></div><div class="ledger">${['delivered','exposure','cost'].map(pair).join('')}</div>`;
+  $('hdr').innerHTML=`<div class="brand"><div class="brandmark">${logoSvg('')}<div><small>Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</small><h1>${gameTitle()}</h1></div></div><span class="mute" style="font-size:12px">${wu?wu.note:last?T('Ledger after {p}',{p:periodLabel(last.y)}):T('Ledger fills in after the first semester')}</span><span class="row" style="gap:8px">${lang}${canBack()?`<button class="ghost" onclick="A.back()">← ${T('Back')}</button>`:''}<button class="ghost" onclick="A.restart()">${T('Restart')}</button></span></div>${wu?`<div class="ledger n${wu.pairs.length}">${wu.pairs.map(wuPair).join('')}</div>`:`<div class="ledger">${['delivered','exposure','cost'].map(pair).join('')}</div>`}`;
+}
+/* Chapters 1–3 ledger: the same pair tiles, opened progressively. Ch1 shows Stockouts · Waste, Ch2 Delivered ·
+   Freshness lost, Ch3 Delivered and Exposure (food safety only). Values come from the chapter's last result, G.wu.led. */
+function ledgerWarmup(){
+  const n=G.chapter,L=G.wu&&G.wu.led,v=(x,f)=>L&&x!=null?f(x):'·';
+  if(n===1)return{note:L?T('Ledger after the round'):T('Ledger fills in after the round'),pairs:[{cls:'exposure',label:T('Stockouts · Waste'),info:'c1policy',
+    dims:[[T('Stockouts'),v(L&&L.stockouts,num),T('units')],[T('Waste'),v(L&&L.waste,num),T('units')]]}]};
+  if(n===2)return{note:L?T('Ledger after Round {n}',{n:L.round}):T('Ledger fills in after Round 1'),pairs:[{cls:'delivered',label:T('Delivered · Freshness lost'),info:'c2fresh',
+    dims:[[T('Delivered'),v(L&&L.delivered,x=>pct(x)),T('net of truck hire')],[T('Freshness lost'),v(L&&L.lost,x=>pct(x)),T('of order value')]]}]};
+  return{note:L?T('Ledger after the morning'):T('Ledger fills in after the morning'),pairs:[
+    {cls:'delivered',label:T(PAIRS.delivered.label),info:'uptake',score:L&&L.delivered,dims:[[T(DIMS.reach),v(L&&L.reach,sc),'/100'],[T(DIMS.nutrition),v(L&&L.nutrition,sc),'/100']]},
+    {cls:'exposure',label:T(PAIRS.exposure.label),info:'decay',score:L&&L.safety,dims:[[T(DIMS.safety),v(L&&L.safety,sc),'/100']],note:T('food safety only in this chapter')}]};
+}
+function wuPair(p){return`<div class="pair ${p.cls}"><div class="t"><span>${p.label} ${info(p.info)}</span>${p.score!=null?`<span class="pscore"><b>${sc(p.score)}</b><small>/ 100</small></span>`:''}</div><div class="dims">${p.dims.map(([l,x,u])=>`<span>${l}<br><b>${x}</b>${u&&x!=='·'?`<small>${u}</small>`:''}</span>`).join('')}</div>${p.note?`<p class="pnote">${p.note}</p>`:''}</div>`;
 }
 
 const VIEWS={};
@@ -1743,7 +1810,37 @@ ${missionCard()}<details class="more card"><summary><b>${T('More context')}</b> 
 <div class="card bitem wide"><div class="bhead">${ICONS.clock(T('The clock'))}<div class="big">${T('4 h')}</div></div><h3>${T('The clock')}</h3><p>${T('From the moment cooking ends, a child must eat within 4 hours. Meals travel in {trays} at tropical room temperature, not hot. Cooked rice and protein held warm grow bacteria, slowly at first and then fast.',{trays:g('ompreng',T('reusable steel trays (ompreng)'))})}</p>${clockSvg()}</div>
 <div class="card bitem wide"><div class="bhead">${ICONS.kitchen(T('The unit'))}<div class="big">${num(2500)}</div></div><h3>${T('The unit')}</h3><p>${T('A {sppg} cooks 2,500 portions a day, or 3,000 with a {cook}, and serves schools within <b>6 km and 30 minutes</b>.',{sppg:g('SPPG',T('regional kitchen (SPPG)')),cook:g('BNSP',T('certified cook'))})}</p><div class="why"><h4>${T('Why regional kitchens, not a kitchen in every school?')}</h4><p>${T('The programme chose a central-kitchen model built on buying ingredients locally, to strengthen the rural economy and smallholder farming, and it expects the kitchens to create jobs in food preparation and logistics. The fact sheet gives those reasons; it does not claim that central kitchens are cheaper or safer.')}</p><p>${T('The cost is the subject of this simulation: a meal cooked far from the child has to travel, and its clock starts at the kitchen, not at the school.')}</p><p>${T('Compare the United States, where most schools prepare or finish meals on site. In a national survey of school districts, 45% used on-site kitchens and another 41% combined a central kitchen with on-site preparation; only 14% relied on central kitchens alone.')}</p><p class="mute hint">${T('Sources: UNICEF Indonesia fact sheet, July 2025; Nettles et al., Journal of the American Dietetic Association, 2005.')}</p></div></div>
 <div class="card bitem wide"><div class="bhead">${ICONS.scale(T('The scale'))}<div class="big">${T('57M')}</div></div><h3>${T('The scale')}</h3><p>${T('Nationally, about 27,000 kitchens feed about 57 million people a day (October 2026), against an original target of 82.9 million.')}</p></div>
-</div></details>`+navRow(nextLbl(1));
+</div></details>`+navRow(nextLbl(G.phase+1));
+
+/* ---------- Chapters: briefs, bridge cards ----------
+   Chapters 1–2 are deliberately bare: fast play, round numbers, no concept text. They set the instinct ("a buffer
+   saved me") that Chapter 3 breaks. */
+const chapterHero=(n,tag)=>`<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="eyebrow">${T('Chapter {n} of 5',{n})}</p><h2>${chTitle(n)}</h2></div></div>${tag?`<p class="tagline">${tag}</p>`:''}</div>`;
+const CH_TAG={
+  1:'One shop, ten trading days, two products on the same shelf. Set an ordering policy for each, then watch the round play out.',
+  2:'One bakery, fifteen cafés, two mornings. Plan the trucks and the runs, then watch them go.',
+  3:'One school-meal kitchen, one morning, up to 2,500 children.',
+};
+VIEWS.c1brief=()=>chapterHero(1,T(CH_TAG[1]))+navRow(nextLbl(G.phase+1));
+VIEWS.c2brief=()=>chapterHero(2,T(CH_TAG[2]))+navRow(nextLbl(G.phase+1));
+VIEWS.c3brief=()=>chapterHero(3,T(CH_TAG[3]))+navRow(nextLbl(G.phase+1));
+/* Pages a chapter has not built yet show only their name (removed as each chapter lands). */
+const pendingPage=()=>card(`<h2>${pageName(G.phase)}</h2>`)+navRow(nextLbl(G.phase+1));
+['c1policy','c1run','c2round','c3plan','c3run'].forEach(k=>{if(!VIEWS[k])VIEWS[k]=pendingPage;});
+/* Bridge: one screen per chapter end. One sentence on what was just learned, one on what changes next. */
+const BRIDGE={
+  1:['A buffer of stock absorbs uncertain demand when the product keeps. On a product that spoils, the same buffer turns into waste.','Next, a bakery: how old a product is when it arrives depends on which delivery run carries it, not on how much you keep in stock.'],
+  2:['Every extra run adds an hour to a product\'s age, so trucks, run order and product mix all buy the same thing: freshness.','Next, a school-meal kitchen: the same curve now measures safety, the clock is four hours, and nothing can be held in reserve.'],
+  3:['Cooked food cannot be buffered. Every portion\'s clock starts when cooking ends, and the last run decides how many children eat safely.','Next, a whole regency: you place the kitchens yourself, under Indonesia\'s 6 km and 30-minute rule, with a partner who must earn back the build.'],
+  4:['Where kitchens sit and how many children each one serves decide holding time, cost, and whether a partner can pay back the build.','Next, the full network over two years: how fast you open kitchens, what you audit, and what happens when a kitchen is suspended.'],
+};
+VIEWS.bridge=()=>{const n=G.chapter,[a,b]=BRIDGE[n];
+  return`<div class="card bridge fade"><p class="eyebrow">${T('Chapter {n} of 5',{n})} · ${T('complete')}</p><h2>${chTitle(n)}</h2>
+<div class="bridgegrid"><div><h4>${T('What you just learned')}</h4><p>${T(a)}</p></div><div><h4>${T('What changes in Chapter {n}',{n:n+1})}</h4><p>${T(b)}</p></div></div></div>`+
+  navRow(T('Start Chapter {n}: {t} →',{n:n+1,t:chTitle(n+1)}),true,'A.nextChapter()');};
+/* Moving between chapters: a fresh game state for the new chapter, keeping what earlier chapters hand forward. */
+function startChapter(n){if(G.anim)G.anim.loop=false;wuStop();G.chapter=n;resetGame();setChapter(n);G.chTimes[n]=G.chTimes[n]||{start:Date.now()};render();}
+function wuStop(){if(G&&G.wu&&G.wu.anim)G.wu.anim.loop=false;}
 
 /* ---------- Set-up page 1: priorities + posture ---------- */
 const head=(n,t)=>`<h2><span class="num">${n}</span>${t}</h2>`;
@@ -1759,7 +1856,7 @@ function secPriorities(){return card(`${head(1,T('Priorities'))}<p class="lead">
 function weightsWhy(){const bars=[50,30,20].map((v,i)=>`<div class="wbar"><span>#${i+1}</span><i style="width:${v*2}%"></i><b>${v}%</b></div>`).join('');
   return`<details class="wwhy" open><summary>${T('Why 50%, 30% and 20%?')}</summary><div class="wgrid"><div>${bars}</div><div><p>${T('The split turns your ranking into weights the way multi-criteria decision analysis often does, with rank-sum weights: for three items they come to 3/6, 2/6 and 1/6, or 50%, 33% and 17%. We round them to 50, 30 and 20.')}</p><p><b>${T('Your top priority carries half the score.')}</b> ${T('It weighs as much as the other two together, so when the pairs pull against each other, the one you said matters most decides the result.')}</p><p><b>${T('Nothing drops below a fifth.')}</b> ${T('Even your last pair still counts for 20%, so you cannot score well by ignoring one entirely: a weak result anywhere still shows.')}</p></div></div></details>`;}
 function secPosture(){return card(`${head(2,T('Launch posture')+' '+info('ramp'))}<p class="lead">${T('How fast do you open kitchens? The {alloc} is sized for every child in your pilot regencies from day one, whichever you pick.',{alloc:g('allocation',T('year\'s budget allocation'))})}</p><div class="opts">${POSTURES.rows.map(p=>`<div class="opt ${G.dec.posture===p.id?'sel':''}" onclick="A.setDec('posture','${p.id}')"><div class="phead">${ICONS[p.id](T(p.label))}<h4>${T(p.label)}</h4></div>${rampBars(p)}<p>${T(p.desc)}</p><p>${T('Hygiene certification')}: ${T(SLHS_LEVELS[p.slhs].label).toLowerCase()} · ${plural(p.inspectors,'{n} inspector per regency','{n} inspectors per regency')}</p></div>`).join('')}</div>`);}
-VIEWS.setup1=()=>`<div class="fade">${secPriorities()}${secPosture()}</div>`+navRow(nextLbl(2),!!G.dec.posture);
+VIEWS.setup1=()=>`<div class="fade">${secPriorities()}${secPosture()}</div>`+navRow(nextLbl(G.phase+1),!!G.dec.posture);
 
 /* ---------- Set-up page 2: regions, regencies, sourcing, delivery ---------- */
 const nodeIcon=id=>{const n={many:9,mixed:4,few:2}[id],r={many:3.2,mixed:5,few:7}[id];let s='<svg viewBox="0 0 120 50" width="120" height="50">';for(let i=0;i<n;i++){const y=6+i*38/(n-1);s+=`<line x1="18" y1="${y}" x2="100" y2="25" stroke="#b9b4a8"/><circle cx="18" cy="${y}" r="${r}" fill="#9A5B00"/>`;}return s+'<rect x="94" y="19" width="12" height="12" rx="2" fill="#007D0E"/></svg>';};
@@ -1830,9 +1927,9 @@ const lockIcon=()=>`<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden=
 function regencyModal(){const rid=G.ui.regModal;if(!rid||viewing()||!G.dec.regions.includes(rid))return'';const p=REGIONS.rows.find(r=>r.id===rid);
   return`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mdl-h" onclick="if(event.target===this)A.closeRegency()"><div class="mcard pop"><button class="mclose ghost" onclick="A.closeRegency()" aria-label="${esc(T('Close'))}">✕</button><p class="eyebrow">${PROV(p)}</p><h2 id="mdl-h">${T('Choose a regency')}</h2><p class="lead">${T('Three candidate regencies in {prov}. They differ in schoolchildren, roads, how spread out schools are, and land price. All are invented.',{prov:PROV(p)})}</p>${regencyPicker(rid)}</div></div>`;}
 VIEWS.setup2=()=>{const two=G.dec.regions.length===2;
-  return`<div class="fade">${secRegions()}</div>${regencyModal()}`+(two&&!setupReadyRegency()?`<p class="warn hint right-hint">${T('Choose a regency in each province to continue.')}</p>`:'')+navRow(nextLbl(3),two&&setupReadyRegency());};
-VIEWS.kitchens=()=>`<div class="fade"><p class="lead pagelead">${T('Set up the kitchens in each regency. The defaults are a reasonable start; change them only if you want to.')}</p>${G.dec.regions.map((rid,i)=>regionPanel(rid,String(i+1))).join('')}</div>${regencyModal()}`+navRow(nextLbl(4));
-VIEWS.sourcing=()=>`<div class="fade">${secSourcing(1)}${card(`<div class="locknote">${lockIcon()}<div><b>${T('Later in the run')}</b><p>${T('Controls against leakage unlock in semester 2. Delivery timing (cooking batches, who eats last, extra vehicles) unlocks in semester 3. Until then they run on sensible defaults.')}</p></div></div>`,'ghostcard')}</div>`+navRow(nextLbl(5),!!G.dec.sourcing.arch);
+  return`<div class="fade">${secRegions()}</div>${regencyModal()}`+(two&&!setupReadyRegency()?`<p class="warn hint right-hint">${T('Choose a regency in each province to continue.')}</p>`:'')+navRow(nextLbl(G.phase+1),two&&setupReadyRegency());};
+VIEWS.kitchens=()=>`<div class="fade"><p class="lead pagelead">${T('Set up the kitchens in each regency. The defaults are a reasonable start; change them only if you want to.')}</p>${G.dec.regions.map((rid,i)=>regionPanel(rid,String(i+1))).join('')}</div>${regencyModal()}`+navRow(nextLbl(G.phase+1));
+VIEWS.sourcing=()=>`<div class="fade">${secSourcing(1)}${card(`<div class="locknote">${lockIcon()}<div><b>${T('Later in the run')}</b><p>${T('Controls against leakage unlock in semester 2. Delivery timing (cooking batches, who eats last, extra vehicles) unlocks in semester 3. Until then they run on sensible defaults.')}</p></div></div>`,'ghostcard')}</div>`+navRow(nextLbl(G.phase+1),!!G.dec.sourcing.arch);
 
 /* ---------- Set-up page: budget ----------
    The allocation is fixed from above; the player splits it into three envelopes. Meals funds service days,
@@ -1873,7 +1970,7 @@ VIEWS.budget=()=>{
 <div class="portion"><span style="flex:10"><b>Rp10,000</b> ${T('ingredients (ceiling)')}</span><span style="flex:3"><b>Rp3,000</b> ${T('operations')}</span><span style="flex:2"><b>Rp2,000</b> ${T('partner incentive')}</span></div>
 <p class="mute hint">${T('Every portion is paid at these rates by regulation; they all come out of the Meals envelope.')}</p>`)+
 card(`${head(2,T('Split the allocation')+' '+info('absorption'))}<p class="lead">${T('Divide the money into three envelopes. The marks on the bar show what your set-up needs. You can change the split before every semester.')}</p><div id="budgetpanel">${budgetPanel('dec',1)}</div>
-<ul class="brules"><li>${T('Too little for meals: kitchens serve fewer school days.')}</li><li>${T('Too little for oversight: inspection, training and controls work at reduced strength.')}</li><li>${T('A reserve absorbs shocks; without one, a shock cuts service days.')}</li><li>${T('Anything unspent is taken back, and next semester\'s allocation shrinks.')}</li></ul>`)+`</div>`+navRow(nextLbl(6));
+<ul class="brules"><li>${T('Too little for meals: kitchens serve fewer school days.')}</li><li>${T('Too little for oversight: inspection, training and controls work at reduced strength.')}</li><li>${T('A reserve absorbs shocks; without one, a shock cuts service days.')}</li><li>${T('Anything unspent is taken back, and next semester\'s allocation shrinks.')}</li></ul>`)+`</div>`+navRow(nextLbl(G.phase+1));
 };
 
 
@@ -1892,7 +1989,7 @@ function menuCatalogue(target){const cur=(target==='dec'?G.dec:G.draft).menu[Mat
 VIEWS.setup3=()=>{const d=G.dec.delivery;if(G.ui.activeRun>4)G.ui.activeRun=0;
   return`<div class="fade">`+card(`${head(1,T('Weekly menu')+' '+info('decay'))}<p class="lead">${T('Plan one meal for each school day, Monday to Friday. The same week repeats for the whole semester. The ingredient ceiling is Rp10,000 a portion; anything above it comes out of your headroom.')}</p>
 ${timelineSvg(G.dec.menu,{batch:Object.fromEntries(G.dec.regions.map(r=>[r,d.batch])),lastRun:d.lastRun,extraFleet:{}})}
-<h3>${T('Your week')}</h3>${weekRows('dec',G.dec.menu)}<h3>${T('Menus')} <span class="mute" style="font-weight:400;font-size:12px">· ${T('assigning to {day}',{day:dayName(Math.min(4,G.ui.activeRun))})}</span></h3>${menuCatalogue('dec')}`)+`</div>`+navRow('▶ '+nextLbl(7),setupReady(),'A.launch()');};
+<h3>${T('Your week')}</h3>${weekRows('dec',G.dec.menu)}<h3>${T('Menus')} <span class="mute" style="font-weight:400;font-size:12px">· ${T('assigning to {day}',{day:dayName(Math.min(4,G.ui.activeRun))})}</span></h3>${menuCatalogue('dec')}`)+`</div>`+navRow('▶ '+nextLbl(G.phase+1),setupReady(),'A.launch()');};
 function setupReadyRegency(){return G.dec.regions.every(r=>G.ui.regPicked&&G.ui.regPicked[r]);}
 function setupReady(){return!!G.dec.posture&&G.dec.regions.length===2&&!!G.dec.sourcing.arch&&setupReadyRegency();}
 
@@ -2270,11 +2367,14 @@ const A={
   simDone(){const a=G.anim;a.finished=true;a.loop=false;G.cuPending=true;render();},
   choose(id){if(viewing())return;resolveEvent(id);render();},
   toggleDims(){G.showDims=!G.showDims;render();},
-  restart(force){if(force||typeof confirm==='undefined'||confirm(T('Restart from the brief? This run will be lost.'))){if(G.anim)G.anim.loop=false;resetGame();render();}},
+  restart(force){if(force||typeof confirm==='undefined'||confirm(T('Restart from the brief? This run will be lost.'))){if(G.anim)G.anim.loop=false;wuStop();resetGame();render();}},
+  nextChapter(){if(viewing()||G.chapter>=5)return;const n=G.chapter;G.chTimes[n]=Object.assign(G.chTimes[n]||{},{end:Date.now()});chapterCarry(n);startChapter(n+1);},
+  skipWarmups(){if(!ALLOW_SKIP_WARMUPS||G.chapter>=3)return;G.carry.skipped=true;startChapter(3);},
   downloadLog(){const log={decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(log,null,2)],{type:'application/json'}));a.download='mbg-run-'+seedHex('final')+'.json';a.click();},
 };
 function render(){
+  setChapter(G.chapter);
   if(typeof document!=='undefined'&&document.documentElement.lang!==LANG){document.documentElement.lang=LANG;document.title=fullTitle();}
   renderHeader();
   const sp=shownPhase(),ph=PHASES[sp][0];
@@ -2462,6 +2562,58 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id) and Spanish (es). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"Chapters":{id:"Bab",es:"Capítulos"},
+"Chapter {n} of 5":{id:"Bab {n} dari 5",es:"Capítulo {n} de 5"},
+"Skip to Chapter 3 →":{id:"Lompat ke Bab 3 →",es:"Saltar al capítulo 3 →"},
+"The Grocery Store":{id:"Toko Kelontong",es:"La tienda de comestibles"},
+"The Bakery":{id:"Toko Roti",es:"La panadería"},
+"MBG: One Kitchen, One Morning":{id:"MBG: Satu Dapur, Satu Pagi",es:"MBG: una cocina, una mañana"},
+"MBG: One Region":{id:"MBG: Satu Wilayah",es:"MBG: una región"},
+"MBG: Two Years":{id:"MBG: Dua Tahun",es:"MBG: dos años"},
+"Grocery store":{id:"Toko kelontong",es:"Tienda"},
+"Bakery":{id:"Toko roti",es:"Panadería"},
+"One kitchen":{id:"Satu dapur",es:"Una cocina"},
+"One region":{id:"Satu wilayah",es:"Una región"},
+"Two years":{id:"Dua tahun",es:"Dos años"},
+"Ordering policy":{id:"Kebijakan pemesanan",es:"Política de pedidos"},
+"The round":{id:"Putaran",es:"La ronda"},
+"What comes next":{id:"Selanjutnya",es:"Lo que viene"},
+"Round 1":{id:"Putaran 1",es:"Ronda 1"},
+"Round 2":{id:"Putaran 2",es:"Ronda 2"},
+"Menu and runs":{id:"Menu dan pengantaran",es:"Menú y viajes"},
+"The morning":{id:"Pagi itu",es:"La mañana"},
+"Province":{id:"Provinsi",es:"Provincia"},
+"Semester 1":{id:"Semester 1",es:"Semestre 1"},
+"Ledger after the round":{id:"Buku besar setelah putaran",es:"Balance tras la ronda"},
+"Ledger fills in after the round":{id:"Buku besar terisi setelah putaran",es:"El balance se llena tras la ronda"},
+"Stockouts · Waste":{id:"Kehabisan stok · Terbuang",es:"Roturas de stock · Desperdicio"},
+"Stockouts":{id:"Kehabisan stok",es:"Roturas de stock"},
+"Waste":{id:"Terbuang",es:"Desperdicio"},
+"units":{id:"unit",es:"unidades"},
+"Ledger after Round {n}":{id:"Buku besar setelah Putaran {n}",es:"Balance tras la ronda {n}"},
+"Ledger fills in after Round 1":{id:"Buku besar terisi setelah Putaran 1",es:"El balance se llena tras la ronda 1"},
+"Delivered · Freshness lost":{id:"Terkirim · Kesegaran hilang",es:"Entregado · Frescura perdida"},
+"Freshness lost":{id:"Kesegaran hilang",es:"Frescura perdida"},
+"net of truck hire":{id:"setelah dikurangi sewa truk",es:"neto del alquiler de camiones"},
+"of order value":{id:"dari nilai pesanan",es:"del valor del pedido"},
+"Ledger after the morning":{id:"Buku besar setelah pagi itu",es:"Balance tras la mañana"},
+"Ledger fills in after the morning":{id:"Buku besar terisi setelah pagi itu",es:"El balance se llena tras la mañana"},
+"food safety only in this chapter":{id:"hanya keamanan pangan di bab ini",es:"solo inocuidad alimentaria en este capítulo"},
+"One shop, ten trading days, two products on the same shelf. Set an ordering policy for each, then watch the round play out.":{id:"Satu toko, sepuluh hari dagang, dua produk di rak yang sama. Tetapkan kebijakan pemesanan untuk masing-masing, lalu saksikan putarannya berjalan.",es:"Una tienda, diez días de venta, dos productos en el mismo estante. Fije una política de pedidos para cada uno y vea cómo transcurre la ronda."},
+"One bakery, fifteen cafés, two mornings. Plan the trucks and the runs, then watch them go.":{id:"Satu toko roti, lima belas kafe, dua pagi. Rencanakan truk dan pengantarannya, lalu saksikan mereka berangkat.",es:"Una panadería, quince cafeterías, dos mañanas. Planifique los camiones y los viajes, y véalos salir."},
+"One school-meal kitchen, one morning, up to 2,500 children.":{id:"Satu dapur makan sekolah, satu pagi, hingga 2.500 anak.",es:"Una cocina de comedor escolar, una mañana, hasta 2500 niños."},
+"A buffer of stock absorbs uncertain demand when the product keeps. On a product that spoils, the same buffer turns into waste.":{id:"Stok penyangga menyerap permintaan yang tak pasti bila produknya awet. Pada produk yang cepat basi, penyangga yang sama berubah menjadi sampah.",es:"Un colchón de existencias absorbe la demanda incierta cuando el producto se conserva. En un producto que se estropea, el mismo colchón se convierte en desperdicio."},
+"Next, a bakery: how old a product is when it arrives depends on which delivery run carries it, not on how much you keep in stock.":{id:"Berikutnya, toko roti: umur produk saat tiba bergantung pada pengantaran mana yang membawanya, bukan pada berapa banyak stok Anda.",es:"Ahora, una panadería: la edad de un producto al llegar depende del viaje de reparto que lo lleva, no de cuántas existencias guarde."},
+"Every extra run adds an hour to a product's age, so trucks, run order and product mix all buy the same thing: freshness.":{id:"Setiap pengantaran tambahan menambah satu jam pada umur produk, jadi truk, urutan pengantaran, dan bauran produk semuanya membeli hal yang sama: kesegaran.",es:"Cada viaje extra añade una hora a la edad del producto, así que camiones, orden de viajes y mezcla de productos compran lo mismo: frescura."},
+"Next, a school-meal kitchen: the same curve now measures safety, the clock is four hours, and nothing can be held in reserve.":{id:"Berikutnya, dapur makan sekolah: kurva yang sama kini mengukur keamanan, waktunya empat jam, dan tidak ada yang bisa disimpan sebagai cadangan.",es:"Ahora, una cocina de comedor escolar: la misma curva mide la seguridad, el reloj es de cuatro horas y nada puede guardarse de reserva."},
+"Cooked food cannot be buffered. Every portion's clock starts when cooking ends, and the last run decides how many children eat safely.":{id:"Makanan matang tidak bisa disangga. Waktu setiap porsi mulai berjalan saat memasak selesai, dan pengantaran terakhir menentukan berapa anak yang makan dengan aman.",es:"La comida cocinada no admite colchón. El reloj de cada ración arranca al terminar de cocinar, y el último viaje decide cuántos niños comen sin riesgo."},
+"Next, a whole regency: you place the kitchens yourself, under Indonesia's 6 km and 30-minute rule, with a partner who must earn back the build.":{id:"Berikutnya, satu kabupaten utuh: Anda sendiri yang menempatkan dapur, di bawah aturan 6 km dan 30 menit Indonesia, dengan mitra yang harus balik modal pembangunannya.",es:"Ahora, una regencia entera: usted sitúa las cocinas, bajo la regla indonesia de 6 km y 30 minutos, con un socio que debe recuperar la construcción."},
+"Where kitchens sit and how many children each one serves decide holding time, cost, and whether a partner can pay back the build.":{id:"Letak dapur dan berapa anak yang dilayani masing-masing menentukan waktu tunggu, biaya, dan apakah mitra bisa balik modal pembangunannya.",es:"Dónde están las cocinas y a cuántos niños sirve cada una deciden el tiempo de espera, el coste y si un socio puede recuperar la construcción."},
+"Next, the full network over two years: how fast you open kitchens, what you audit, and what happens when a kitchen is suspended.":{id:"Berikutnya, jaringan penuh selama dua tahun: seberapa cepat Anda membuka dapur, apa yang Anda audit, dan apa yang terjadi saat sebuah dapur dihentikan.",es:"Ahora, la red completa durante dos años: a qué ritmo abre cocinas, qué audita y qué ocurre cuando se suspende una cocina."},
+"complete":{id:"selesai",es:"completado"},
+"What you just learned":{id:"Yang baru Anda pelajari",es:"Lo que acaba de aprender"},
+"What changes in Chapter {n}":{id:"Yang berubah di Bab {n}",es:"Lo que cambia en el capítulo {n}"},
+"Start Chapter {n}: {t} →":{id:"Mulai Bab {n}: {t} →",es:"Empezar el capítulo {n}: {t} →"},
 "Supplier failure: {kab}":{id:"Pemasok gagal: {kab}",es:"Fallo de proveedor: {kab}"},
 "A regional wholesaler has stopped delivering staples for about four weeks. Cooperatives can cover fresh produce only.":{id:"Seorang grosir regional berhenti mengirim bahan pokok selama sekitar empat minggu. Koperasi hanya bisa menutup bahan segar.",es:"Un mayorista regional ha dejado de entregar alimentos básicos durante unas cuatro semanas. Las cooperativas solo pueden cubrir los productos frescos."},
 "Serve the sealed emergency pack (biscuits + UHT milk) on affected days":{id:"Sajikan paket darurat tersegel (biskuit + susu UHT) pada hari terdampak",es:"Servir el paquete de emergencia sellado (galletas + leche UHT) los días afectados"},
@@ -3486,7 +3638,7 @@ const SCENARIOS={
   caution:{label:'Excessive caution',dec:{posture:'cautious'},plan:y=>({inspectors:{JT:3,KB:3},training:{JT:true,KB:true},audit:true}),choose:{}},
 };
 function autoplay(scn){
-  resetGame();G.dec=Object.assign(clone(BASE_DEC),clone(scn.dec||{}));initWorld();G.phase=YEAR_PHASE0+1;
+  G.chapter=5;resetGame();setChapter(5);G.dec=Object.assign(clone(BASE_DEC),clone(scn.dec||{}));initWorld();G.phase=YEAR_PHASE0+1;
   for(let y=1;y<=NP();y++){
     const plan=Object.assign(defaultPlan(y),scn.plan?clone(scn.plan(y)):{});
     G.plans[y-1]=plan;beginYear(y,plan);
@@ -3506,10 +3658,11 @@ function devStatus(){
 }
 function devPanel(){
   const rows=Object.entries(PARAMS).map(([id,p])=>`<tr><td><code>${id}</code></td><td>${p.v}</td><td>${p.unit}</td><td><span class="tag ${p.src[0]}">${p.src}</span></td><td>${esc(p.note)}</td></tr>`).join('');
-  return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<button onclick="A.devRun()">Autoplay all trap scenarios</button><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
+  return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<div class="row"><label>Jump to chapter <select onchange="A.devJump(+this.value)">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n} · ${CHAPTER_PAGES[n].title}</option>`).join('')}</select></label><button onclick="A.devRun()">Autoplay Chapter 5 trap scenarios</button></div><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
 }
-A.devRun=()=>{const r=runScenarios();resetGame();render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
-if(typeof window!=='undefined')window.MBG={get G(){return G;},PARAMS,SCENARIOS,autoplay,runScenarios};
+A.devRun=()=>{const ch=G.chapter,r=runScenarios();G.chapter=ch;resetGame();render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
+A.devJump=n=>startChapter(n);
+if(typeof window!=='undefined')window.MBG={get G(){return G;},PARAMS,SCENARIOS,autoplay,runScenarios,startChapter};
 if(typeof document!=='undefined')render();
 </script>
 </body>
