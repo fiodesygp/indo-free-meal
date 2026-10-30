@@ -964,7 +964,7 @@ const WARMUP = {
   B_SOUR_LAM:{v:360,unit:'min',src:'estimate',note:'Sourdough freshness lag λ.'},
   B_SOUR_H:{v:180,unit:'min',src:'estimate',note:'Sourdough freshness half-life h.'},
   B_SWAP_VALUE:{v:0.6,unit:'share',src:'estimate',note:'A café accepts sourdough in place of croissants at 60% of the croissant value.'},
-  B_TRUCK_FEE:{v:1.25e6,unit:'Rp/truck/round',src:'estimate',note:'Set so a truck that saves a third run breaks even against croissants on that run: 5 cafés × Rp500,000 of croissants × (1 − 0.5^((180 − 120)/60)) = Rp1,250,000.'},
+  B_TRUCK_FEE:{v:6e5,unit:'Rp/truck/round',src:'estimate',note:'Set so that no truck count is best in both rounds: with the cheapest routes, one truck leads round 1 and three trucks lead round 2, when the next-door bakery adds a run (decision-space check, 29 Oct 2026).'},
 };
 /* Chapter 2 café groups: each group of five cafés is one truckload. crois = croissants' share of the order value
    (estimate). The neighbour's group arrives in round 2 when its bakery's oven fails. */
