@@ -1735,14 +1735,18 @@ function simRunning(){const a=G.anim;return(a&&a.y===G.phase-YEAR_PHASE0&&!a.fin
    Every page already passed can be revisited, but decisions are locked; only Restart reopens them. */
 const viewing=()=>G.viewing!=null;
 const shownPhase=()=>viewing()?G.viewing:G.phase;
+/* Back stays inside a chapter, with one exception: on the first page of the chosen path (Practice 1 or Stage 1),
+   until the path is locked, Back returns to the choice page. */
+const pathStart=()=>G.carry.path==='direct'?3:1;
+const canReopen=()=>!viewing()&&G.chapter===pathStart()&&G.phase===0&&!!G.carry.path&&!G.carry.pathLocked;
 function canBack(){
   if(simRunning())return false;
-  return shownPhase()>0;
+  return shownPhase()>0||canReopen();
 }
 const backBtn=()=>`<button class="ghost back" onclick="A.back()">← ${T('Back')}</button>`;
 const navRow=(label,ok=true,fn='A.go()',extra='')=>viewing()?roNav():`<div class="row nav">${canBack()?backBtn():''}${extra}<button class="right" ${ok?'':'disabled'} onclick="${fn}">${label||T('Continue')}</button></div>`;
-const roNav=()=>`<div class="row nav">${canBack()?backBtn():''}<button class="right" onclick="A.forward()">${G.viewing+1>=G.phase?T('Return to where you are →'):nextLbl(G.viewing+1)}</button></div>`;
-const roBanner=()=>`<div class="robanner"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="11" width="12" height="9" rx="1.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></g></svg><span>${T('You are looking back at {page}. Your decisions are locked here; to change them, use Restart.',{page:`<b>${fullName(G.viewing)}</b>`})}</span><button class="ghost" onclick="A.view(null)">${T('Return to where you are →')}</button></div>`;
+const roNav=()=>`<div class="row nav">${canBack()?backBtn():''}<button class="right" onclick="A.forward()">${G.viewing+1>=G.phase?T('Continue →'):nextLbl(G.viewing+1)}</button></div>`;
+const roBanner=()=>`<div class="robanner"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="11" width="12" height="9" rx="1.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></g></svg><span>${T('You are looking back at {page}. Your decisions are locked here; to change them, use Restart.',{page:`<b>${fullName(G.viewing)}</b>`})}</span><button class="ghost" onclick="A.view(null)">${T('Continue →')}</button></div>`;
 const nextBtn=navRow;
 /* Within a category the button names the next page as the sub-row does; crossing into a new category it names both. */
 const nextLbl=i=>T('Next: {page} →',{page:catOf(i)===catOf(i-1)?pageName(i):fullName(i)});
@@ -2010,12 +2014,12 @@ const BRIEF_ITEMS={
   scale:()=>`<div class="card bitem wide"><div class="bhead">${ICONS.scale(T('The scale'))}<div class="big">${T('57M')}</div></div><h3>${T('The scale')}</h3><p>${T('Nationally, about 27,000 kitchens feed about 57 million people a day (October 2026), against an original target of 82.9 million.')}</p></div>`,
 };
 /* Chapter 4's brief: the unit, and who is fed and when (calendar and beneficiary mix); background optional. */
-function briefCh4(){return chapterHero(4,T(CH_TAG[4]))+`<div class="bgrid fade">${BRIEF_ITEMS.unit()}${BRIEF_ITEMS.who()}</div><details class="more card"><summary><b>${T('More context')}</b> <span class="mute">${T('optional · why the programme exists')}</span></summary>${briefBackground()}</details>`+navRow(nextLbl(G.phase+1));}
+function briefCh4(){return chapterHero(4,T(CH_TAG[4]))+`<div class="bgrid fade">${BRIEF_ITEMS.unit()}${BRIEF_ITEMS.who()}</div><details class="more card"><summary><b>${T('More context')}</b> <span class="mute">${T('optional · why the programme exists')}</span></summary>${briefBackground()}</details>`+navRow(nextLbl(shownPhase()+1));}
 /* Chapter 5's brief: the mission, and the last of the four facts (the scale). The explainer, the clock, the unit
    and who is fed were met in Chapters 3–4. */
 VIEWS.brief=()=>G.chapter===4?briefCh4():`<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="eyebrow">${chPos(5)} · ${T('Briefing · about two minutes')}</p><p class="kicker">Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</p><h2>${gameTitle()}</h2></div></div><p class="tagline">${T('Every meal has four hours to reach a child. Build the network that wins the race, for two years, on a budget.')}</p>
 <p class="lead">${T('You are setting up the school channel of Indonesia\'s free meals programme, {mbg}, in two pilot {regencies}, for two operating years, played as four semesters. Your job is physical flow: food from a kitchen to a child before it can harm them, under a budget and a clock.',{mbg:g('MBG',T('Makan Bergizi Gratis (Free Nutritious Meals)')),regencies:g('kabupaten',T('regencies'))})}</p></div>
-${missionCard()}<div class="bgrid fade">${BRIEF_ITEMS.scale()}</div>`+navRow(nextLbl(G.phase+1));
+${missionCard()}<div class="bgrid fade">${BRIEF_ITEMS.scale()}</div>`+navRow(nextLbl(shownPhase()+1));
 
 /* ---------- Chapters: briefs, bridge cards ----------
    Chapters 1–2 are deliberately bare: fast play, round numbers, no concept text. They set the instinct ("a buffer
@@ -2061,7 +2065,7 @@ ${dgIcon('warehouse',40,30)}${dgLab(76,35,T('Supplier'),'b','start')}${dgArrow(4
 ${sh.svg}<path class="dg-dash" d="M${sh.out[0]} ${sh.out[1]}Q270 240 290 262"/>${dgIcon('bin',292,276)}${dgLab(320,316,waste,'cost','end')}
 ${dgArrow(40,298,40,344)}${dgIcon('shopper',32,372)}${dgIcon('shopper',54,372)}${dgLab(80,376,T('Shoppers'),'b','start')}</svg>`;})();
   return`<div class="card dg fade">${w}${n}${dgSay('how much to order and how much extra to keep, for each product.','stockouts and waste.')}</div>`;}
-VIEWS.c1brief=()=>chapterHero(1,T(CH_TAG[1]))+groceryDiagram()+navRow(nextLbl(G.phase+1));
+VIEWS.c1brief=()=>chapterHero(1,T(CH_TAG[1]))+groceryDiagram()+navRow(nextLbl(shownPhase()+1));
 /* The bakery: the trucks fan out to the three café groups, one run per group with a single truck (more trucks bring
    groups forward into run 1). Below, the freshness curves (compS, the same as meal safety) with the delivery time of
    each run, from bakeryAge(). */
@@ -2088,9 +2092,9 @@ ${Array.from({length:nT},(_,k)=>`<g class="${k?'dg-opt':''}">${dgIcon('truck',40
 ${ids.map((id,k)=>{const gy=172+k*56;return dgArrow(40,gy,112,gy)+dgLab(76,gy-7,T('run {n}',{n:k+1}),'b')+cafes(128,gy)+dgLab(118,gy+24,grpName(id)+' · '+per,'b','start');}).join('')}
 ${dgLab(10,348,more,'m','start')}${chart(48,314,414,530)}</svg>`;
   return`<div class="card dg fade">${w}${n}<div class="legend"><span><i class="lg wu-cro"></i>${T('Croissant')}</span><span><i class="lg wu-sou"></i>${T('Sourdough')}</span></div>${dgSay('how many trucks, which cafés go last, and croissant or sourdough for each group.','value delivered, after freshness loss and truck hire.')}</div>`;}
-VIEWS.c2brief=()=>chapterHero(2,T(CH_TAG[2]))+bakeryDiagram()+navRow(nextLbl(G.phase+1));
+VIEWS.c2brief=()=>chapterHero(2,T(CH_TAG[2]))+bakeryDiagram()+navRow(nextLbl(shownPhase()+1));
 /* Pages a chapter has not built yet show only their name (removed as each chapter lands). */
-const pendingPage=()=>card(`<h2>${pageName(G.phase)}</h2>`)+navRow(nextLbl(G.phase+1));
+const pendingPage=()=>card(`<h2>${pageName(G.phase)}</h2>`)+navRow(nextLbl(shownPhase()+1));
 ['c1policy','c1run','c2round','c3plan','c3run'].forEach(k=>{if(!VIEWS[k])VIEWS[k]=pendingPage;});
 /* Bridge: one screen per chapter end. One sentence on what was just learned, one on what changes next. */
 const BRIDGE={
@@ -2104,8 +2108,8 @@ VIEWS.bridge=()=>{const n=G.chapter,[a,b]=BRIDGE[n];
   navRow(T('Start {c}: {t} →',{c:chLabel(n+1),t:chTitle(n+1)}),true,'A.nextChapter()');};
 /* Entry (chapter 0). The intro carries the "What is MBG?" explainer; the choice page sends the player into the
    basics (Practice 1) or straight to the MBG Project (Stage 1). No default: each card has its own button. */
-VIEWS.intro=()=>`<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="kicker">Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</p><h2>${gameTitle()}</h2></div></div></div>${explainerHtml()}`+navRow(nextLbl(G.phase+1));
-VIEWS.choice=()=>`<div class="bridgegrid choice fade">
+VIEWS.intro=()=>`<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="kicker">Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</p><h2>${gameTitle()}</h2></div></div></div>${explainerHtml()}`+navRow(nextLbl(shownPhase()+1));
+VIEWS.choice=()=>`${G.carry.choiceViaBack?`<p class="lead pagelead">${T('You can switch paths until you start making decisions.')}</p>`:''}<div class="bridgegrid choice fade">
 <div class="card"><p class="eyebrow">${T(PARTS[1].title)} · ${T('about {n} min',{n:17})}</p><h3>${T('Learn supply chain basics first')}</h3><p>${T('Practice 1: The Grocery Store, then Practice 2: The Bakery. Then the MBG Project.')}</p><button class="right" onclick="A.choosePath('basics')">${T('Start with the basics')}</button></div>
 <div class="card"><p class="eyebrow">${T(PARTS[2].title)}</p><h3>${T('Go straight to the MBG Project')}</h3><p>${T('Start at Stage 1. For players already comfortable with supply chain concepts.')}</p><button class="right" onclick="A.choosePath('direct')">${T('Start the MBG Project')}</button></div></div>`+(canBack()?`<div class="row nav">${backBtn()}</div>`:'');
 /* The gate between the parts: replaces Practice 2's bridge card. One screen: what was practised, what comes next,
@@ -2168,7 +2172,7 @@ VIEWS.c1policy=()=>`<div class="fade"><p class="lead pagelead">${T('Set one poli
 VIEWS.c1run=()=>{const w=G.wu;if(!w.res)return pendingPage();
   if(wuRunning()&&!viewing())return wuShell({eyebrow:T('Run · {n} trading days',{n:W('G_DAYS')}),title:T('The round'),ticks:w.res.days.map(d=>String(d.day)),
     hud:[['day',T('Trading day'),T('of {n}',{n:W('G_DAYS')})],['dry',c1Name('dry'),T('left at closing')],['bread',c1Name('bread'),T('left at closing')],['short',T('Stockouts'),T('units')],['waste',T('Waste'),T('units')]]});
-  return c1Results()+navRow(nextLbl(G.phase+1));};
+  return c1Results()+navRow(nextLbl(shownPhase()+1));};
 /* Stage: one bar per day per product. Bar = shelf at opening; tick = demand; red = demand not met; brown below the
    axis = loaves thrown away that evening. */
 function c1Chart(k,res,upto){
@@ -2234,7 +2238,7 @@ VIEWS.c2round=()=>{const w=G.wu,r=c2Round(),done=w.rounds[r];
   if(!done)return c2Plan();
   if(wuRunning())return wuShell({eyebrow:T('Run · round {n} of 2',{n:r}),title:T('The morning run'),ticks:[0,60,120,180,240].map(t=>T('{t} min',{t})),
     hud:[['min',T('Minutes after baking'),''],['runs',T('Runs delivered'),''],['cafes',T('Cafés served'),''],['lost',T('Freshness lost'),T('of order value')],['hire',T('Truck hire'),'']]});
-  return c2Results(r)+navRow(nextLbl(G.phase+1));};
+  return c2Results(r)+navRow(nextLbl(shownPhase()+1));};
 const c2End=res=>bakeryAge(res.runs.length)+20;  // minutes shown: until the last run has been delivered
 WU_PAINT[2]=f=>{const rd=G.wu.rounds[c2Round()],res=rd.res,m=f*rd.endMin,st=$('wu-stage');
   const arrived=res.runs.filter(x=>x.t<=m),lost=sum(arrived.flatMap(x=>x.rows.map(g=>g.lost)));
@@ -2267,7 +2271,7 @@ ${res.lostSwap?`<p class="mute hint">${T('Sourdough sent instead of croissants g
    The MBG engine scoped to one kitchen: kitchenOps() with a meal per run. The brief carries one of the four facts
    (the clock). On the direct path (the player skipped Chapters 1–2) it also carries the safety-stock line. */
 const C3_SKIP_LINE='In a warehouse, a buffer of extra stock absorbs surprises. Cooked food cannot be buffered: every portion\'s four-hour clock starts when cooking ends.';
-VIEWS.c3brief=()=>`<div class="card mission fade parthead"><p class="eyebrow">${T('Part {n}',{n:2})}</p><h3>${T(PARTS[2].title)}</h3></div>${chapterHero(3,T(CH_TAG[3]))}${G.carry.path==='direct'?`<div class="card note fade"><p>${T(C3_SKIP_LINE)}</p></div>`:''}<div class="bgrid fade">${BRIEF_ITEMS.clock()}</div>`+navRow(nextLbl(G.phase+1));
+VIEWS.c3brief=()=>`<div class="card mission fade parthead"><p class="eyebrow">${T('Part {n}',{n:2})}</p><h3>${T(PARTS[2].title)}</h3></div>${chapterHero(3,T(CH_TAG[3]))}${G.carry.path==='direct'?`<div class="card note fade"><p>${T(C3_SKIP_LINE)}</p></div>`:''}<div class="bgrid fade">${BRIEF_ITEMS.clock()}</div>`+navRow(nextLbl(shownPhase()+1));
 const C3_COOK_END=()=>P('COOK_START_MIN')+P('COOK_DURATION_MIN');  // cooking starts 02:00 and ends 06:00
 function c3Plan(){const p=G.wu.plan,vp=P('VEHICLE_PORTIONS'),cap=P('CAP_STD'),ro=viewing(),o=morningOps(p);
   const rows=o.runs.map(r=>`<tr><td><b>${T('Run {n}',{n:r.i+1})}</b></td><td data-l="${esc(T('Children'))}">${num(r.portions)}</td><td data-l="${esc(T('Minutes from cooking to eating'))}">${P('COOL_MIN')} + ${P('PACK_MIN')} + ${Math.round(r.leg)} + ${r.i} × ${Math.round(2*r.leg)} = <b class="${r.overLimit?'bad':''}">${Math.round(r.hold)}</b>${r.overLimit?` <span class="warn">${T('past the 4-hour limit')}</span>`:''}</td>
@@ -2300,7 +2304,7 @@ const c3End=o=>Math.round(o.runs[o.runs.length-1].hold)+20;
 VIEWS.c3run=()=>{const w=G.wu;if(!w.res)return pendingPage();
   if(wuRunning()&&!viewing())return wuShell({eyebrow:T('Run · one morning'),title:T('The morning'),ticks:[0,60,120,180,240,300].map(t=>hhmm(C3_COOK_END()+t)),
     hud:[['clock',T('Clock'),T('cooking ended {t}',{t:hhmm(C3_COOK_END())})],['runs',T('Runs delivered'),''],['fed',T('Children fed'),''],['risk',T('Portions at risk'),T('eaten after their safe window')],['held',T('Held longest'),T('minutes')]]});
-  return c3Results()+navRow(nextLbl(G.phase+1));};
+  return c3Results()+navRow(nextLbl(shownPhase()+1));};
 WU_PAINT[3]=f=>{const o=G.wu.res,m=f*c3End(o),st=$('wu-stage'),arr=o.runs.filter(r=>r.hold<=m);
   if(st)st.innerHTML=c3Timeline(o,m);
   wuSet('clock',hhmm(C3_COOK_END()+m));wuSet('runs',`${arr.length} / ${o.runs.length}`);wuSet('fed',num(sum(arr.map(r=>r.portions))));
@@ -2332,7 +2336,7 @@ function secPriorities(){return card(`${head(1,T('Priorities'))}<p class="lead">
 function weightsWhy(){const bars=[50,30,20].map((v,i)=>`<div class="wbar"><span>#${i+1}</span><i style="width:${v*2}%"></i><b>${v}%</b></div>`).join('');
   return`<details class="wwhy" open><summary>${T('Why 50%, 30% and 20%?')}</summary><div class="wgrid"><div>${bars}</div><div><p>${T('The split turns your ranking into weights the way multi-criteria decision analysis often does, with rank-sum weights: for three items they come to 3/6, 2/6 and 1/6, or 50%, 33% and 17%. We round them to 50, 30 and 20.')}</p><p><b>${T('Your top priority carries half the score.')}</b> ${T('It weighs as much as the other two together, so when the pairs pull against each other, the one you said matters most decides the result.')}</p><p><b>${T('Nothing drops below a fifth.')}</b> ${T('Even your last pair still counts for 20%, so you cannot score well by ignoring one entirely: a weak result anywhere still shows.')}</p></div></div></details>`;}
 function secPosture(){return card(`${head(2,T('Launch posture')+' '+info('ramp'))}<p class="lead">${T('How fast do you open kitchens? The {alloc} is sized for every child in your pilot regencies from day one, whichever you pick.',{alloc:g('allocation',T('year\'s budget allocation'))})}</p><div class="opts">${POSTURES.rows.map(p=>`<div class="opt ${G.dec.posture===p.id?'sel':''}" onclick="A.setDec('posture','${p.id}')"><div class="phead">${ICONS[p.id](T(p.label))}<h4>${T(p.label)}</h4></div>${rampBars(p)}<p>${T(p.desc)}</p><p>${T('Hygiene certification')}: ${T(SLHS_LEVELS[p.slhs].label).toLowerCase()} · ${plural(p.inspectors,'{n} inspector per regency','{n} inspectors per regency')}</p></div>`).join('')}</div>`);}
-VIEWS.setup1=()=>`<div class="fade">${secPriorities()}${secPosture()}</div>`+navRow(nextLbl(G.phase+1),!!G.dec.posture);
+VIEWS.setup1=()=>`<div class="fade">${secPriorities()}${secPosture()}</div>`+navRow(nextLbl(shownPhase()+1),!!G.dec.posture);
 
 /* ---------- Set-up page 2: regions, regencies, sourcing, delivery ---------- */
 const nodeIcon=id=>{const n={many:9,mixed:4,few:2}[id],r={many:3.2,mixed:5,few:7}[id];let s='<svg viewBox="0 0 120 50" width="120" height="50">';for(let i=0;i<n;i++){const y=6+i*38/(n-1);s+=`<line x1="18" y1="${y}" x2="100" y2="25" stroke="#b9b4a8"/><circle cx="18" cy="${y}" r="${r}" fill="#9A5B00"/>`;}return s+'<rect x="94" y="19" width="12" height="12" rx="2" fill="#007D0E"/></svg>';};
@@ -2403,9 +2407,9 @@ const lockIcon=()=>`<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden=
 function regencyModal(){const rid=G.ui.regModal;if(!rid||viewing()||!G.dec.regions.includes(rid))return'';const p=REGIONS.rows.find(r=>r.id===rid);
   return`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mdl-h" onclick="if(event.target===this)A.closeRegency()"><div class="mcard pop"><button class="mclose ghost" onclick="A.closeRegency()" aria-label="${esc(T('Close'))}">✕</button><p class="eyebrow">${PROV(p)}</p><h2 id="mdl-h">${T('Choose a regency')}</h2><p class="lead">${T('Three candidate regencies in {prov}. They differ in schoolchildren, roads, how spread out schools are, and land price. All are invented.',{prov:PROV(p)})}</p>${regencyPicker(rid)}</div></div>`;}
 VIEWS.setup2=()=>{const two=G.dec.regions.length===CH().regions;
-  return`<div class="fade">${secRegions()}</div>${regencyModal()}`+(two&&!setupReadyRegency()?`<p class="warn hint right-hint">${CH().regions===1?T('Choose a regency to continue.'):T('Choose a regency in each province to continue.')}</p>`:'')+navRow(nextLbl(G.phase+1),two&&setupReadyRegency());};
-VIEWS.kitchens=()=>`<div class="fade"><p class="lead pagelead">${CH().regions===1?T('Set up the kitchens in your regency. The defaults are a reasonable start; change them only if you want to.'):T('Set up the kitchens in each regency. The defaults are a reasonable start; change them only if you want to.')}</p>${G.dec.regions.map((rid,i)=>regionPanel(rid,String(i+1))).join('')}</div>${regencyModal()}`+navRow(nextLbl(G.phase+1));
-VIEWS.sourcing=()=>`<div class="fade">${secSourcing(1)}${card(`<div class="locknote">${lockIcon()}<div>${G.chapter===4?`<b>${T('In Stage 3')}</b><p>${T('Controls against leakage and delivery timing (cooking batches, who eats last, extra vehicles) come in Stage 3. Here they run on sensible defaults.')}</p>`:`<b>${T('Later in the run')}</b><p>${T('Controls against leakage unlock in semester 2. Delivery timing (cooking batches, who eats last, extra vehicles) unlocks in semester 3. Until then they run on sensible defaults.')}</p>`}</div></div>`,'ghostcard')}</div>`+navRow(nextLbl(G.phase+1),!!G.dec.sourcing.arch);
+  return`<div class="fade">${secRegions()}</div>${regencyModal()}`+(two&&!setupReadyRegency()?`<p class="warn hint right-hint">${CH().regions===1?T('Choose a regency to continue.'):T('Choose a regency in each province to continue.')}</p>`:'')+navRow(nextLbl(shownPhase()+1),two&&setupReadyRegency());};
+VIEWS.kitchens=()=>`<div class="fade"><p class="lead pagelead">${CH().regions===1?T('Set up the kitchens in your regency. The defaults are a reasonable start; change them only if you want to.'):T('Set up the kitchens in each regency. The defaults are a reasonable start; change them only if you want to.')}</p>${G.dec.regions.map((rid,i)=>regionPanel(rid,String(i+1))).join('')}</div>${regencyModal()}`+navRow(nextLbl(shownPhase()+1));
+VIEWS.sourcing=()=>`<div class="fade">${secSourcing(1)}${card(`<div class="locknote">${lockIcon()}<div>${G.chapter===4?`<b>${T('In Stage 3')}</b><p>${T('Controls against leakage and delivery timing (cooking batches, who eats last, extra vehicles) come in Stage 3. Here they run on sensible defaults.')}</p>`:`<b>${T('Later in the run')}</b><p>${T('Controls against leakage unlock in semester 2. Delivery timing (cooking batches, who eats last, extra vehicles) unlocks in semester 3. Until then they run on sensible defaults.')}</p>`}</div></div>`,'ghostcard')}</div>`+navRow(nextLbl(shownPhase()+1),!!G.dec.sourcing.arch);
 
 /* ---------- Set-up page: budget ----------
    The allocation is fixed from above; the player splits it into three envelopes. Meals funds service days,
@@ -2446,7 +2450,7 @@ VIEWS.budget=()=>{
 <div class="portion"><span style="flex:10"><b>Rp10,000</b> ${T('ingredients (ceiling)')}</span><span style="flex:3"><b>Rp3,000</b> ${T('operations')}</span><span style="flex:2"><b>Rp2,000</b> ${T('partner incentive')}</span></div>
 <p class="mute hint">${T('Every portion is paid at these rates by regulation; they all come out of the Meals envelope.')}</p>`)+
 card(`${head(2,T('Split the allocation')+' '+info('absorption'))}<p class="lead">${T('Divide the money into three envelopes. The marks on the bar show what your set-up needs. You can change the split before every semester.')}</p><div id="budgetpanel">${budgetPanel('dec',1)}</div>
-<ul class="brules"><li>${T('Too little for meals: kitchens serve fewer school days.')}</li><li>${T('Too little for oversight: inspection, training and controls work at reduced strength.')}</li><li>${T('A reserve absorbs shocks; without one, a shock cuts service days.')}</li><li>${T('Anything unspent is taken back, and next semester\'s allocation shrinks.')}</li></ul>`)+`</div>`+navRow(nextLbl(G.phase+1));
+<ul class="brules"><li>${T('Too little for meals: kitchens serve fewer school days.')}</li><li>${T('Too little for oversight: inspection, training and controls work at reduced strength.')}</li><li>${T('A reserve absorbs shocks; without one, a shock cuts service days.')}</li><li>${T('Anything unspent is taken back, and next semester\'s allocation shrinks.')}</li></ul>`)+`</div>`+navRow(nextLbl(shownPhase()+1));
 };
 
 
@@ -2465,7 +2469,7 @@ function menuCatalogue(target){const cur=(target==='dec'?G.dec:G.draft).menu[Mat
 VIEWS.setup3=()=>{const d=G.dec.delivery;if(G.ui.activeRun>4)G.ui.activeRun=0;
   return`<div class="fade">`+card(`${head(1,T('Weekly menu')+' '+info('decay'))}<p class="lead">${T('Plan one meal for each school day, Monday to Friday. The same week repeats for the whole semester. The ingredient ceiling is Rp10,000 a portion; anything above it comes out of your headroom.')}</p>
 ${timelineSvg(G.dec.menu,{batch:Object.fromEntries(G.dec.regions.map(r=>[r,d.batch])),lastRun:d.lastRun,extraFleet:{}})}
-<h3>${T('Your week')}</h3>${weekRows('dec',G.dec.menu)}<h3>${T('Menus')} <span class="mute" style="font-weight:400;font-size:12px">· ${T('assigning to {day}',{day:dayName(Math.min(4,G.ui.activeRun))})}</span></h3>${menuCatalogue('dec')}`)+`</div>`+navRow('▶ '+nextLbl(G.phase+1),setupReady(),'A.launch()');};
+<h3>${T('Your week')}</h3>${weekRows('dec',G.dec.menu)}<h3>${T('Menus')} <span class="mute" style="font-weight:400;font-size:12px">· ${T('assigning to {day}',{day:dayName(Math.min(4,G.ui.activeRun))})}</span></h3>${menuCatalogue('dec')}`)+`</div>`+navRow('▶ '+nextLbl(shownPhase()+1),setupReady(),'A.launch()');};
 function setupReadyRegency(){return G.dec.regions.every(r=>G.ui.regPicked&&G.ui.regPicked[r]);}
 function setupReady(){return!!G.dec.posture&&G.dec.regions.length===CH().regions&&!!G.dec.sourcing.arch&&setupReadyRegency();}
 
@@ -2798,7 +2802,12 @@ const A={
   view(i){if(simRunning())return;G.viewing=(i==null||i>=G.phase)?null:i;hideInfo();render();},
   forward(){if(!viewing())return;A.view(G.viewing+1);},
   setLang(l){LANG=l;try{localStorage.setItem('mbg-lang',l);}catch(e){}document.documentElement.lang=l;document.title=fullTitle();hideInfo();render();},
-  back(){if(!canBack())return;A.view(shownPhase()-1);},
+  /* Back: the choice page returns to the intro as a live page; the first page of an unlocked path reopens the
+     choice; anywhere else, the page before, view-only. */
+  back(){if(!canBack())return;if(canReopen())return A.reopenChoice();if(G.chapter===0&&!viewing()){G.phase--;render();return;}A.view(shownPhase()-1);},
+  /* Back to the choice page before the path is locked: the abandoned path's chapter state, carry-over and timings
+     are dropped; only firstPath and pathSwitches survive. */
+  reopenChoice(){if(!canReopen())return;const c=G.carry;G.carry={firstPath:c.firstPath,pathSwitches:c.pathSwitches||0,lastPick:c.path,choiceViaBack:true};G.chTimes={};startChapter(0);G.phase=1;render();},
   unreview(){A.view(null);},
   setDec(path,v){if(viewing())return;setPath(G.dec,path,v);render();},
   setDraft(path,v){if(viewing())return;setPath(G.draft,path,v);render();},
@@ -2873,12 +2882,15 @@ const A={
   replayBasics(){if(viewing()||G.chapter!==2)return;G.carry.basicsFirstMin=basicsFirstMin();G.carry.basicsReplays=(G.carry.basicsReplays||0)+1;
     const now=Date.now();for(const n of[1,2]){const t=G.chTimes[n];if(t&&t.start){t.acc=(t.acc||0)+((t.end||now)-t.start);t.start=null;t.end=null;}}startChapter(1);},
   /* Choice page: the basics start at Practice 1; the direct path starts at Stage 1 and Part 1 never opens. */
-  choosePath(p){if(viewing()||G.chapter!==0)return;G.carry.path=p;startChapter(p==='direct'?3:1);},
+  choosePath(p){if(viewing()||G.chapter!==0)return;const c=G.carry;if(!c.firstPath)c.firstPath=p;
+    if(c.lastPick&&c.lastPick!==p)c.pathSwitches=(c.pathSwitches||0)+1;  // picking the same path again is not a switch
+    delete c.lastPick;delete c.choiceViaBack;c.path=p;startChapter(p==='direct'?3:1);},
   downloadLog(){const log={decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(log,null,2)],{type:'application/json'}));a.download='mbg-run-'+seedHex('final')+'.json';a.click();},
 };
 function render(){
   setChapter(G.chapter);
+  if(G.chapter>0&&G.phase>0)G.carry.pathLocked=true;  // page 2 of any chapter locks the path for the rest of the game
   if(typeof document!=='undefined')document.body.classList.toggle('atgate',PHASES[shownPhase()][0]==='gate');  // phones hide the ledger on the gate
   if(typeof document!=='undefined'&&document.documentElement.lang!==LANG){document.documentElement.lang=LANG;document.title=fullTitle();}
   renderHeader();
@@ -3032,7 +3044,7 @@ const FEEDBACK_ENDPOINT='';
 const FB={rating:0,text:'',sent:false,status:''};
 const FB_SCALE=[['😞','Not at all'],['🙁','Not much'],['😐','It was OK'],['🙂','Quite a lot'],['😄','Loved it']];
 function fbRecord(){const L=G.results.length?finalLedger():null;
-  return{rating:FB.rating,ratingLabel:FB.rating?FB_SCALE[FB.rating-1][1]:'',feedback:FB.text.trim(),lang:LANG,chapter:G.chapter,part:partOf(G.chapter),path:G.carry.path||null,chapterMinutes:chapterMinutes(),basicsReplays:G.carry.basicsReplays||0,basicsFirstMin:basicsFirstMin(),
+  return{rating:FB.rating,ratingLabel:FB.rating?FB_SCALE[FB.rating-1][1]:'',feedback:FB.text.trim(),lang:LANG,chapter:G.chapter,part:partOf(G.chapter),path:G.carry.path||null,firstPath:G.carry.firstPath||null,pathSwitches:G.carry.pathSwitches||0,chapterMinutes:chapterMinutes(),basicsReplays:G.carry.basicsReplays||0,basicsFirstMin:basicsFirstMin(),
     submittedAt:new Date().toISOString(),seed:G.results.length?seedHex('final'):null,
     scores:L?{delivered:L.delivered,exposure:L.exposure,cost:L.cost}:null};}
 /* Minutes spent in each chapter, accumulated across attempts (acc = closed attempts, start/end = the open one); the
@@ -3064,7 +3076,7 @@ Object.assign(A,{
 function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
 /* Feedback goes into the run log too, and is cleared when a new game starts. */
 (function(){const rs=A.restart;
-  A.downloadLog=function(){const log={chapter:G.chapter,part:partOf(G.chapter),path:G.carry.path||null,chapterMinutes:chapterMinutes(),basicsReplays:G.carry.basicsReplays||0,basicsFirstMin:basicsFirstMin(),decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
+  A.downloadLog=function(){const log={chapter:G.chapter,part:partOf(G.chapter),path:G.carry.path||null,firstPath:G.carry.firstPath||null,pathSwitches:G.carry.pathSwitches||0,chapterMinutes:chapterMinutes(),basicsReplays:G.carry.basicsReplays||0,basicsFirstMin:basicsFirstMin(),decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
     if(FB.sent)log.feedback=fbRecord();
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(log,null,2)],{type:'application/json'}));a.download='mbg-run-'+seedHex('final')+'.json';a.click();};
   A.restart=function(force){const before=G;rs.apply(this,arguments);if(G!==before||G.phase===0)Object.assign(FB,{rating:0,text:'',sent:false,status:''});};
@@ -3073,6 +3085,8 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"Continue →":{id:"Lanjutkan →"},
+"You can switch paths until you start making decisions.":{id:"Kamu bisa berganti jalur sampai kamu mulai mengambil keputusan."},
 "{a}–{b} trucks":{id:"{a}–{b} truk"},
 "More trucks: more groups go in run 1.":{id:"Lebih banyak truk: lebih banyak kelompok di putaran 1."},
 "{n} cafés":{id:"{n} kafe"},
@@ -3926,7 +3940,6 @@ const I18N={
 "Simulation logo":{id:"Logo simulasi"},
 "Every meal has four hours to reach a child. Build the network that wins the race, for two years, on a budget.":{id:"Setiap porsi punya empat jam untuk sampai ke anak. Bangun jaringan yang memenangkan balapan ini selama dua tahun, dengan anggaran terbatas."},
 "Look back (read-only)":{id:"Lihat kembali (hanya baca)"},
-"Return to where you are →":{id:"Kembali ke posisi Anda →"},
 "Next page →":{id:"Halaman berikutnya →"},
 "You are looking back at {page}. Your decisions are locked here; to change them, use Restart.":{id:"Anda sedang melihat kembali {page}. Keputusan Anda terkunci di sini; untuk mengubahnya, gunakan Mulai ulang."},
 "you are here":{id:"posisi Anda"},
@@ -4289,9 +4302,11 @@ function devPanel(){
 }
 A.devRun=()=>{const ch=G.chapter,r=runScenarios();G.chapter=ch;resetGame();render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
 /* Jumps set the path a player would have taken to get there: 1, 2 and the gate are the basics; 3–5 keep the current
-   path (basics if none was chosen); "direct" is Stage 1 with Part 1 skipped. Intro and choice clear the path. */
-A.devJump=v=>{const c=G.carry;if(v==='intro'||v==='choice'){c.path=null;startChapter(0);G.phase=v==='choice'?1:0;render();return;}
-  c.path=v==='direct'?'direct':(+v<=2||v==='gate'||!c.path)?'basics':c.path;
+   path (basics if none was chosen); "direct" is Stage 1 with Part 1 skipped. Intro and choice start a fresh game.
+   A jump to a path's first page leaves the path unlocked; any other jump locks it. */
+A.devJump=v=>{if(v==='intro'||v==='choice'){G.carry={};G.chTimes={};startChapter(0);G.phase=v==='choice'?1:0;render();return;}
+  const c=G.carry;c.path=v==='direct'?'direct':(+v<=2||v==='gate'||!c.path)?'basics':c.path;
+  c.pathLocked=!(v==='1'||v==='direct'||(v==='3'&&c.path==='direct'));
   if(v==='gate'){startChapter(2);G.phase=PHASES.findIndex(p=>p[0]==='gate');render();}else startChapter(v==='direct'?3:+v);};
 A.devChapter=n=>{const ch=G.chapter,r=autoplayChapter(n);if(n>=4)startChapter(ch);else render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
 if(typeof window!=='undefined')window.MBG={get G(){return G;},PARAMS,WARMUP,SCENARIOS,autoplay,runScenarios,startChapter,autoplayChapter};
