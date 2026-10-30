@@ -677,8 +677,8 @@ body{padding-left:0}
 .c2plan td{vertical-align:middle}.c2plan th{text-align:left!important}.c2plan td.mv{white-space:nowrap}.c2plan .seg button{font:var(--t-caption);padding:4px 8px}
 .maps>div:only-child{max-width:520px}
 .gate .gateq{margin:var(--sp-6) 0 var(--sp-3)}.gate .gatebtns{gap:var(--sp-3);flex-wrap:wrap}.gate ul{margin:0;padding-left:var(--sp-5)}
-/* Phones: on the gate the sticky header drops its ledger tiles, so the question and both buttons fit one screen. */
-@media(max-width:640px){body.atgate #hdr .ledger{display:none}.gate .bridgegrid{gap:var(--sp-2)}.gate .gateq{font:var(--t-title-s);margin:var(--sp-4) 0 var(--sp-2)}}
+/* Phones: on the gate the sticky header drops its ledger tiles and their note, so the question and both buttons fit one screen. */
+@media(max-width:640px){body.atgate #hdr .ledger,body.atgate #hdr .lednote{display:none}.gate .bridgegrid{gap:var(--sp-2)}.gate .gateq{font:var(--t-title-s);margin:var(--sp-4) 0 var(--sp-2)}}
 #nav .navdiv.on{background:var(--green-ink);width:4px;box-shadow:0 0 0 3px var(--green-soft)}
 .bridgegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:640px){.bridgegrid{grid-template-columns:1fr}}
 @media (max-width:640px){
@@ -1808,7 +1808,7 @@ function renderHeader(){
   const pair=id=>{const d=PAIRS[id].dims;return`<div class="pair ${id}"><div class="t"><span>${T(PAIRS[id].label)} ${info(id==='delivered'?'uptake':id==='exposure'?'hazard':'ledger')}</span><span class="pscore"><b ${L?cu(L[id]):''}>${L?sc(L[id]):'–'}</b><small>/ 100</small></span></div><div class="dims">${d.map(x=>`<span>${T(DIMS[x])}<br><b ${L&&!(x==='plate'&&!L.plateVisible)?cu(L[x]):''}>${L?sc(L[x])+(x==='plate'&&!L.plateVisible?'%':''):'·'}</b>${L&&!(x==='plate'&&!L.plateVisible)?'<small>/100</small>':''}</span>`).join('')}</div><p class="pnote">${T('= average of the two, each scored 0–100')}</p></div>`;};
   const lang=`<div class="seg lang" role="group" aria-label="${esc(T('Language'))}">${LANGS.map(([c,s,n])=>`<button class="${LANG===c?'on':''}" lang="${c}" title="${n}" aria-pressed="${LANG===c}" onclick="A.setLang('${c}')">${s}</button>`).join('')}</div>`;
   if($('nav')){$('nav').innerHTML=steps;navScroll();}
-  $('hdr').innerHTML=`<div class="brand"><div class="brandmark">${logoSvg('')}<div><small>Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</small><h1>${gameTitle()}</h1></div></div><span class="mute" style="font-size:12px">${wu?wu.note:last?T('Ledger after {p}',{p:periodLabel(last.y)}):T('Ledger fills in after the first semester')}</span><span class="row" style="gap:8px">${lang}${canBack()?`<button class="ghost" onclick="A.back()">← ${T('Back')}</button>`:''}<button class="ghost" onclick="A.restart()">${T('Restart')}</button></span></div>${wu?`<div class="ledger n${wu.pairs.length}">${wu.pairs.map(wuPair).join('')}</div>`:`<div class="ledger">${['delivered','exposure','cost'].map(pair).join('')}</div>`}`;
+  $('hdr').innerHTML=`<div class="brand"><div class="brandmark">${logoSvg('')}<div><small>Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</small><h1>${gameTitle()}</h1></div></div><span class="mute lednote" style="font-size:12px">${wu?wu.note:last?T('Ledger after {p}',{p:periodLabel(last.y)}):T('Ledger fills in after the first semester')}</span><span class="row" style="gap:8px">${lang}${canBack()?`<button class="ghost" onclick="A.back()">← ${T('Back')}</button>`:''}<button class="ghost" onclick="A.restart()">${T('Restart')}</button></span></div>${wu?`<div class="ledger n${wu.pairs.length}">${wu.pairs.map(wuPair).join('')}</div>`:`<div class="ledger">${['delivered','exposure','cost'].map(pair).join('')}</div>`}`;
 }
 /* Chapters 1–3 ledger: the same pair tiles, opened progressively. Ch1 shows Stockouts · Waste, Ch2 Delivered ·
    Freshness lost, Ch3 Delivered and Exposure (food safety only). Values come from the chapter's last result, G.wu.led. */
