@@ -649,6 +649,7 @@ body{padding-left:0}
 .wuverdict{font:var(--t-title-xs);margin:var(--sp-2) 0 0}.wuverdict.good{color:var(--good)}.wuverdict.bad{color:var(--bad)}
 .wuchart{width:100%;height:auto}.wuchart.sm{max-width:49%;display:inline-block}@media(max-width:760px){.wuchart.sm{max-width:100%}}
 .wu-stock{fill:var(--green-soft-2);background:var(--green-soft-2)}.wu-short{fill:var(--bad);background:var(--bad)}.wu-waste{fill:var(--cost);background:var(--cost)}
+.wu-lab.wu-breach{fill:var(--bad);font-weight:var(--w-bold)}.hud b.bad{color:var(--bad)}
 .wu-dem{stroke:var(--ink);stroke-width:2.5;background:var(--ink)}.wu-axis{stroke:var(--mute)}.wu-grid{stroke:var(--line)}.wu-lab{fill:var(--mute);font:var(--t-caption)}
 .legend .lg.wu-dem{height:3px}
 .wu-cro{fill:none;stroke:var(--cost);stroke-width:2.5;background:var(--cost)}.wu-sou{fill:none;stroke:var(--green-ink);stroke-width:2.5;background:var(--green-ink)}
@@ -2158,7 +2159,7 @@ function c3Timeline(o,m){
     s+=`<text class="wu-lab" x="${L-8}" y="${y+14}" text-anchor="end">${T('run {n}',{n:r.i+1})}</text><rect class="wu-load" x="${X(0)}" y="${y+4}" width="${base*sx}" height="12"/>`;
     if(t0>base)s+=`<rect class="wu-wait" x="${X(base)}" y="${y+4}" width="${(t0-base)*sx}" height="12"/>`;
     s+=`<rect class="${r.overLimit?'wu-short':'wu-road'}" x="${X(t0)}" y="${y+4}" width="${Math.max(1,(Math.min(end,r.hold)-t0)*sx)}" height="12"/>`;
-    if(on)s+=`<text class="wu-lab" x="${X(r.hold)+6}" y="${y+14}">${T('{s} eaten safe',{s:pct(r.S)})}</text>`;});
+    if(on)s+=`<text class="wu-lab${r.overLimit?' wu-breach':''}" x="${X(r.hold)+6>W0-200?X(t0)-6:X(r.hold)+6}" y="${y+14}" text-anchor="${X(r.hold)+6>W0-200?'end':'start'}">${T('{s} eaten safe',{s:pct(r.S)})}${r.overLimit?' · '+T('past the 4-hour limit'):''}</text>`;});
   s+=`<line class="wu-now" x1="${X(lim)}" x2="${X(lim)}" y1="2" y2="${H-22}"/><text class="wu-lab" x="${X(lim)}" y="${H-24}" text-anchor="middle">${T('4-hour limit')}</text>`;
   if(m!=null)s+=`<line class="wu-axis" x1="${X(m)}" x2="${X(m)}" y1="2" y2="${H-22}" stroke-width="2"/>`;
   return s+`</svg><div class="legend"><span><i class="lg wu-load"></i>${T('cooling + packing')}</span><span><i class="lg wu-wait"></i>${T('waiting for a vehicle')}</span><span><i class="lg wu-road"></i>${T('on the road')}</span><span class="mute">${T('Minutes after cooking ends.')}</span></div>`;}
@@ -2171,17 +2172,18 @@ VIEWS.c3run=()=>{const w=G.wu;if(!w.res)return pendingPage();
 WU_PAINT[3]=f=>{const o=G.wu.res,m=f*c3End(o),st=$('wu-stage'),arr=o.runs.filter(r=>r.hold<=m);
   if(st)st.innerHTML=c3Timeline(o,m);
   wuSet('clock',hhmm(C3_COOK_END()+m));wuSet('runs',`${arr.length} / ${o.runs.length}`);wuSet('fed',num(sum(arr.map(r=>r.portions))));
-  wuSet('risk',num(sum(arr.map(r=>r.risk))));wuSet('held',arr.length?num(arr[arr.length-1].hold):'–');};
-WU_END[3]=()=>{const o=G.wu.res;return wuEndCard(T('{t} · every run delivered',{t:hhmm(C3_COOK_END()+o.runs[o.runs.length-1].hold)}),T('Morning complete'),[[T('Children fed'),num(o.fed)],[T('Portions at risk'),num(o.risk)]]);};
+  wuSet('risk',num(sum(arr.map(r=>r.risk))));wuSet('held',arr.length?num(arr[arr.length-1].hold):'–');
+  const br=arr.some(r=>r.overLimit),hb=$('wu-held');if(hb){hb.classList.toggle('bad',br);const sm=hb.nextElementSibling;if(sm)sm.textContent=br?T('past the 4-hour limit'):T('minutes');}};
+WU_END[3]=()=>{const o=G.wu.res,late=sum(o.runs.filter(r=>r.overLimit).map(r=>r.portions));return wuEndCard(T('{t} · every run delivered',{t:hhmm(C3_COOK_END()+o.runs[o.runs.length-1].hold)}),T('Morning complete'),[[T('Children fed'),num(o.fed)],[T('Portions at risk'),num(o.risk)],...(late?[[T('Past the 4-hour limit'),`<span class="bad">${num(late)}</span>`]]:[])]);};
 WU_LED[3]=()=>{const o=G.wu.res;return{reach:o.reach,nutrition:o.nutrition,safety:o.safety,delivered:o.delivered};};
 function c3Results(){const o=G.wu.res;
   const sExpr=r=>r.hold<=r.weak.lam?T('1 (held ≤ λ)'):`0.5^((${Math.round(r.hold)} − ${r.weak.lam}) ÷ ${r.weak.h}) = ${pct(r.S)}`;
-  const rows=o.runs.map(r=>`<tr><td>${T('Run {n}',{n:r.i+1})}</td><td>${num(r.portions)}</td><td class="${r.overLimit?'bad':''}">${Math.round(r.hold)}</td><td>${menuName(r.menu)}</td><td>${compName(r.weak)} (λ ${r.weak.lam}, h ${r.weak.h})</td><td>${sExpr(r)}</td><td>${num(r.risk)}</td></tr>`).join('');
+  const rows=o.runs.map(r=>`<tr><td>${T('Run {n}',{n:r.i+1})}</td><td>${num(r.portions)}</td><td class="${r.overLimit?'bad':''}">${Math.round(r.hold)}${r.overLimit?` <span class="tag r">${T('past the 4-hour limit')}</span>`:''}</td><td>${menuName(r.menu)}</td><td>${compName(r.weak)} (λ ${r.weak.lam}, h ${r.weak.h})</td><td>${sExpr(r)}</td><td>${num(r.risk)}</td></tr>`).join('');
   return`<div class="fade">`+card(`<h2>${T('The morning: results')}</h2><table class="wucalc"><tr><th>${T('Run')}</th><th>${T('Children')}</th><th>${T('Held (min)')}</th><th>${T('Meal')}</th><th>${T('Weakest component')}</th><th>${T('Safe share S')}</th><th>${T('Portions at risk')}</th></tr>${rows}</table>
 <p class="mute hint">${T('Portions at risk on a run = children × (1 − S). S is the same lag-then-halving curve as Freshness in Chapter 2, here labelled Safety: 1 until λ, then halving every h minutes. A meal is as safe as its weakest component.')}</p>
 ${calcTable([[T(DIMS.reach),`${num(o.fed)} ÷ ${num(o.cap)}`,sc(o.reach)],[T(DIMS.nutrition),T('Σ children × menu fit × nutrient score ÷ children fed'),sc(o.nutrition)],[T(PAIRS.delivered.label),`(${sc(o.reach)} + ${sc(o.nutrition)}) ÷ 2`,`<b>${sc(o.delivered)}</b>`,'tot'],
 [T(DIMS.safety),`100 × (1 − ${num(o.risk)} ÷ ${num(o.fed)})`,`<b>${sc(o.safety)}</b>`,'tot']])}
-<p class="wuverdict ${o.risk>=1?'bad':'good'}">${o.risk>=1?T('About {n} children could fall ill: {p} of the portions at risk, the simulation\'s attack rate.',{n:num(o.ill),p:pct(P('ATTACK_RATE'))}):T('Every child ate inside the safe window.')}</p>${c3Timeline(o,c3End(o))}`)+`</div>`;}
+${o.runs.filter(r=>r.overLimit).map(r=>`<p class="wuverdict bad">${T('Run {n} broke the 4-hour rule: {c} children ate {m} minutes after cooking ended, past the {l}-minute limit.',{n:r.i+1,c:num(r.portions),m:Math.round(r.hold),l:P('HOLD_LIMIT_MIN')})}</p>`).join('')}<p class="wuverdict ${o.risk>=1?'bad':'good'}">${o.risk>=1?T('About {n} children could fall ill: {p} of the portions at risk, the simulation\'s attack rate.',{n:num(o.ill),p:pct(P('ATTACK_RATE'))}):T('Every child ate inside the safe window.')}</p>${c3Timeline(o,c3End(o))}`)+`</div>`;}
 
 /* ---------- Set-up page 1: priorities + posture ---------- */
 const head=(n,t)=>`<h2><span class="num">${n}</span>${t}</h2>`;
@@ -2930,6 +2932,8 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id) and Spanish (es). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"Past the 4-hour limit":{id:"Melewati batas 4 jam",es:"Pasado el límite de 4 horas"},
+"Run {n} broke the 4-hour rule: {c} children ate {m} minutes after cooking ended, past the {l}-minute limit.":{id:"Pengantaran {n} melanggar aturan 4 jam: {c} anak makan {m} menit setelah memasak selesai, melewati batas {l} menit.",es:"El viaje {n} incumplió la regla de las 4 horas: {c} niños comieron {m} minutos después de terminar de cocinar, pasado el límite de {l} minutos."},
 "Pilot province":{id:"Provinsi percontohan",es:"Provincia piloto"},
 "Choose one province on the map or from the cards. Inside it you will then pick one of three candidate {regencies}. Provinces are real; the regencies are invented.":{id:"Pilih satu provinsi di peta atau dari kartu. Di dalamnya Anda lalu memilih satu dari tiga {regencies} kandidat. Provinsinya nyata; kabupatennya rekaan.",es:"Elija una provincia en el mapa o en las tarjetas. Dentro de ella elegirá después una de tres {regencies} candidatas. Las provincias son reales; las regencias, inventadas."},
 "Choose a regency to continue.":{id:"Pilih kabupaten untuk melanjutkan.",es:"Elija una regencia para continuar."},
