@@ -640,7 +640,22 @@ body{padding-left:0}
 #nav .navchip.done{color:var(--green-ink)}#nav .navchip.done b{background:var(--green-soft);color:var(--green-ink)}
 #nav .navchip.on{background:var(--green-soft);color:var(--green-ink)}#nav .navchip.on b{background:var(--green-ink);color:var(--panel)}
 #nav .navchsep{flex:none;width:16px;height:2px;background:var(--line)}
+/* Phones: the sticky header must stay short. Ledger tiles stack in one column; a tile that has a score shows just its
+   title and score (the detail lines are on the results pages). Warm-up readouts and chart text are resized to fit. */
+@media(max-width:640px){#hdr .ledger.n1,#hdr .ledger.n2{grid-template-columns:minmax(0,1fr);max-width:none}
+  .ledger .pair:has(.pscore) .dims,.ledger .pair:has(.pscore) .pnote{display:none}.ledger .pair:has(.pscore) .t{align-items:center}
+  #wuroot .hud b{font:var(--t-title-xs);font-weight:var(--w-bold)}
+  .wuchart .wu-lab{font-size:18px}.wuchart.wide .wu-lab{font-size:24px}
+  table.calc,table.calc tbody{display:block}table.calc tr{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--sp-2);padding:var(--sp-1) 0;border-bottom:1px solid var(--line)}
+  table.calc td{border:0;padding:0}table.calc td:nth-child(2){grid-row:2;grid-column:1/3;font:var(--t-caption)}table.calc tr.tot{border-top:2px solid var(--line)}table.calc tr.tot td{border-top:0}}
+@media(max-width:640px){#nav .navchip:not(.on) span{display:none}#nav .navchip:not(.on){padding-right:2px}#nav .navchsep{width:10px}}
 .ledger.n1{grid-template-columns:minmax(0,1fr);max-width:520px}.ledger.n2{grid-template-columns:repeat(2,minmax(0,1fr));max-width:760px}
+/* Chapter tables on phones: each row becomes a block, each cell a labelled line (data-l), so controls stay on screen. */
+@media(max-width:640px){table.stack,table.stack tbody,table.stack tr,table.stack td{display:block;width:auto}table.stack{overflow:visible}
+  table.stack tr:first-child{display:none}table.stack tr{padding:var(--sp-2) 0;border-bottom:1px solid var(--line)}
+  table.stack td{border:0;padding:2px 0;text-align:left!important}table.stack td[data-l]{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2);justify-content:space-between;align-items:center}
+  table.stack td[data-l]::before{content:attr(data-l);color:var(--mute);font:var(--t-caption)}
+  table.stack .thumbcell{min-width:0;max-width:100%}table.stack select{min-width:0;max-width:100%;flex:1 1 auto}}
 .wu2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:760px){.wu2{grid-template-columns:1fr}}
 .wuprod .phead{display:flex;align-items:center;gap:var(--sp-3)}.wuprod .phead h3{margin:0}
 .wufacts{margin:var(--sp-2) 0 var(--sp-3);padding-left:var(--sp-5);font:var(--t-body-s);color:var(--mute)}
@@ -2022,7 +2037,7 @@ const wuEndCard=(kicker,title,kv)=>`<div class="ovlcard pop"><p class="eyebrow">
 /* A calculation table: label, arithmetic, result. Every warm-up result is shown with its arithmetic. */
 /* Warm-up money is shown to the rupiah so every sum can be checked by hand. */
 const rpFull=n=>'Rp'+num(n);
-const calcTable=rows=>`<table class="wucalc">${rows.map(r=>`<tr class="${r[3]||''}"><td>${r[0]}</td><td class="mute">${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</table>`;
+const calcTable=rows=>`<table class="wucalc calc">${rows.map(r=>`<tr class="${r[3]||''}"><td>${r[0]}</td><td class="mute">${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</table>`;
 
 /* ---------- Chapter 1: the grocery store ---------- */
 const C1_ICON={dry:l=>ICON_WRAP('<path d="M17 20h22l-2 22H19z"/><path d="M17 20l3-6h16l3 6"/><path d="M23 28h10"/>',l),
@@ -2039,7 +2054,7 @@ ${dry?`<li>${T('No expiry')}</li><li>${T('Holding: Rp{n} per unit per day',{n:nu
 <p class="wushelf">${T('On the shelf each morning')}: <b>${num(p.q)} + ${num(p.ss)} = ${num(p.q+p.ss)}</b> ${T('units')}</p></div>`;}
 VIEWS.c1policy=()=>`<div class="fade"><p class="lead pagelead">${T('Set one policy per product. It holds for all ten days. Each evening the store orders enough to open the next morning with order quantity + safety stock on the shelf.')}</p><div class="wu2">${c1Card('dry')}${c1Card('bread')}</div></div>`+navRow('▶ '+T('Run the round'),true,'A.c1Run()');
 VIEWS.c1run=()=>{const w=G.wu;if(!w.res)return pendingPage();
-  if(wuRunning()&&!viewing())return wuShell({eyebrow:T('Run · {n} trading days',{n:W('G_DAYS')}),title:T('The round'),ticks:w.res.days.map(d=>T('Day {d}',{d:d.day})),
+  if(wuRunning()&&!viewing())return wuShell({eyebrow:T('Run · {n} trading days',{n:W('G_DAYS')}),title:T('The round'),ticks:w.res.days.map(d=>String(d.day)),
     hud:[['day',T('Trading day'),T('of {n}',{n:W('G_DAYS')})],['dry',c1Name('dry'),T('left at closing')],['bread',c1Name('bread'),T('left at closing')],['short',T('Stockouts'),T('units')],['waste',T('Waste'),T('units')]]});
   return c1Results()+navRow(nextLbl(G.phase+1));};
 /* Stage: one bar per day per product. Bar = shelf at opening; tick = demand; red = demand not met; brown below the
@@ -2086,18 +2101,18 @@ const c2Round=()=>shownPhase();  // pages 1 and 2 are rounds 1 and 2
 function c2Plan(){const p=G.wu.plan,res=bakeryRound(p,null),r=c2Round(),fee=W('B_TRUCK_FEE');
   const runOf={};res.runs.forEach(x=>x.rows.forEach(g=>{runOf[g.id]=x;}));
   const rows=p.order.map((id,k)=>{const x=runOf[id];return`<tr><td class="mv"><button class="ghost" aria-label="${esc(T('Move up'))}" onclick="A.c2Move('${id}',-1)" ${k===0?'disabled':''}>↑</button><button class="ghost" aria-label="${esc(T('Move down'))}" onclick="A.c2Move('${id}',1)" ${k===p.order.length-1?'disabled':''}>↓</button></td>
-<td><b>${grpName(id)}</b><br><span class="mute">${T('{n} cafés · croissants are {p} of the order',{n:W('B_CAFES_PER_TRUCK'),p:pct(CAFE_GROUPS[id].crois)})}</span></td><td>${T('Run {n}',{n:x.i})}</td><td>${T('{t} min',{t:x.t})}</td><td>${pct(x.Sc)}</td>
-<td>${seg([[0,T('As ordered')],[1,T('Sourdough instead')]],p.swap[id]?1:0,v=>`A.wuPol('plan.swap.${id}',${!!v})`)}</td></tr>`;}).join('');
+<td><b>${grpName(id)}</b><br><span class="mute">${T('{n} cafés · croissants are {p} of the order',{n:W('B_CAFES_PER_TRUCK'),p:pct(CAFE_GROUPS[id].crois)})}</span></td><td data-l="${esc(T('Run'))}">${T('Run {n}',{n:x.i})}</td><td data-l="${esc(T('Delivered at'))}">${T('{t} min',{t:x.t})}</td><td data-l="${esc(T('Croissant freshness'))}">${pct(x.Sc)}</td>
+<td data-l="${esc(T('Product'))}">${seg([[0,T('As ordered')],[1,T('Sourdough instead')]],p.swap[id]?1:0,v=>`A.wuPol('plan.swap.${id}',${!!v})`)}</td></tr>`;}).join('');
   return`<div class="fade">`+card(`<h2>${T('Round {n}: plan',{n:r})}</h2>
 <div class="ctl"><span>${T('Trucks')}</span>${seg(B_TRUCK_OPTIONS.map(x=>[x,String(x)]),p.trucks,v=>`A.wuPol('plan.trucks',${v})`)}<small>${T('Hire: {f} per truck per round. Each truck carries {n} cafés per run.',{f:rpFull(fee),n:W('B_CAFES_PER_TRUCK')})}</small></div>
-<h3>${T('Run order')}</h3><table class="wucalc c2plan"><tr><th></th><th>${T('Cafés')}</th><th>${T('Run')}</th><th>${T('Delivered at')}</th><th>${T('Croissant freshness')}</th><th>${T('Product')}</th></tr>${rows}</table>
+<h3>${T('Run order')}</h3><table class="wucalc c2plan stack"><tr><th></th><th>${T('Cafés')}</th><th>${T('Run')}</th><th>${T('Delivered at')}</th><th>${T('Croissant freshness')}</th><th>${T('Product')}</th></tr>${rows}</table>
 <p class="mute hint">${T('Age at delivery = {a} + {b} + (run − 1) × {c} min.',{a:W('B_LOAD_MIN'),b:W('B_LEG_MIN'),c:W('B_TRIP_MIN')})}</p>${c2Curve(res.runs.map(x=>x.t))}`)+`</div>`+navRow('▶ '+T('Run round {n}',{n:r}),true,'A.c2Run()');}
 /* The freshness curves: the same function as meal safety, labelled Freshness here. Dots: this plan's runs. */
 function c2Curve(ages,upto){
-  const W0=520,H=170,L=40,B=140,sx=(W0-L-12)/300,sy=110,X=t=>L+t*sx,Y=v=>B-v*sy;
+  const W0=520,H=196,L=64,B=140,sx=(W0-L-16)/300,sy=110,X=t=>L+t*sx,Y=v=>B-v*sy;
   const path=c=>{let d='';for(let t=0;t<=300;t+=5)d+=(t?'L':'M')+X(t).toFixed(1)+' '+Y(compS(c,t)).toFixed(1);return d;};
   let s=`<svg viewBox="0 0 ${W0} ${H}" class="wuchart c2curve" role="img" aria-label="${esc(T('Freshness'))}"><line class="wu-axis" x1="${L}" x2="${W0-8}" y1="${B}" y2="${B}"/>`;
-  for(const t of[0,60,120,180,240,300])s+=`<line class="wu-grid" x1="${X(t)}" x2="${X(t)}" y1="${Y(1)}" y2="${B}"/><text class="wu-lab" x="${X(t)}" y="${H-12}" text-anchor="middle">${t}</text>`;
+  for(const t of[0,60,120,180,240,300])s+=`<line class="wu-grid" x1="${X(t)}" x2="${X(t)}" y1="${Y(1)}" y2="${B}"/><text class="wu-lab" x="${X(t)}" y="${B+26}" text-anchor="middle">${t}</text>`;
   for(const v of[0,0.5,1])s+=`<text class="wu-lab" x="${L-6}" y="${Y(v)+4}" text-anchor="end">${pct(v)}</text>`;
   s+=`<path class="wu-cro" d="${path(CROISSANT())}"/><path class="wu-sou" d="${path(SOURDOUGH())}"/>`;
   ages.forEach((t,k)=>{if(upto!=null&&t>upto)return;s+=`<circle class="wu-dot cro" cx="${X(t)}" cy="${Y(compS(CROISSANT(),t))}" r="5"/><circle class="wu-dot sou" cx="${X(t)}" cy="${Y(compS(SOURDOUGH(),t))}" r="5"/><text class="wu-lab" x="${X(t)}" y="${Y(1)-6}" text-anchor="middle">${T('run {n}',{n:k+1})}</text>`;});
@@ -2116,13 +2131,13 @@ WU_PAINT[2]=f=>{const rd=G.wu.rounds[c2Round()],res=rd.res,m=f*rd.endMin,st=$('w
   wuSet('lost',pct(lost/res.ordered));wuSet('hire',rpFull(res.hire));};
 /* Timeline of the morning: loading, then each run on the road; the cursor is the clock. */
 function c2Timeline(res,m){
-  const W0=520,L=96,sx=(W0-L-12)/(c2End(res)),rh=26,H=res.runs.length*rh+36,X=t=>L+t*sx;
+  const W0=520,L=96,sx=(W0-L-12)/(c2End(res)),rh=44,H=res.runs.length*rh+20,X=t=>L+t*sx;
   let s=`<svg viewBox="0 0 ${W0} ${H}" class="wuchart" role="img" aria-label="${esc(T('The morning run'))}">`;
   res.runs.forEach((x,k)=>{const y=8+k*rh,dep=x.t-W('B_LEG_MIN'),on=m>=x.t;
     s+=`<text class="wu-lab" x="${L-8}" y="${y+14}" text-anchor="end">${T('run {n}',{n:x.i})}${x.rows.some(g=>g.extra)?' ★':''}</text><rect class="wu-load" x="${X(0)}" y="${y+4}" width="${(dep)*sx}" height="12"/>`;
     s+=`<rect class="${on?'wu-road':'wu-wait'}" x="${X(dep)}" y="${y+4}" width="${W('B_LEG_MIN')*sx}" height="12"/>`;
-    if(on)s+=`<text class="wu-lab" x="${X(x.t)+6}" y="${y+14}">${x.rows.map(g=>grpName(g.id)).join(', ')} · ${pct(x.Sc)}</text>`;});
-  return s+`<line class="wu-now" x1="${X(Math.min(m,c2End(res)))}" x2="${X(Math.min(m,c2End(res)))}" y1="2" y2="${H-24}"/><text class="wu-lab" x="${L}" y="${H-6}">${T('loading and waiting')} · ${T('on the road')} · ${T('croissant freshness on arrival')}</text></svg>`;}
+    if(on)s+=`<text class="wu-lab" x="${L}" y="${y+34}">${x.rows.map(g=>grpName(g.id)).join(', ')} · ${pct(x.Sc)}</text>`;});  // under the bar, so long names fit
+  return s+`<line class="wu-now" x1="${X(Math.min(m,c2End(res)))}" x2="${X(Math.min(m,c2End(res)))}" y1="2" y2="${H-24}"/></svg><div class="legend"><span><i class="lg wu-load"></i>${T('loading and waiting')}</span><span><i class="lg wu-road"></i>${T('on the road')}</span><span class="mute">${T('croissant freshness on arrival')}</span></div>`;}
 WU_EVENT[2]=()=>{const rd=G.wu.rounds[c2Round()],n=rd.res.runs.length+1;
   return`<div class="ovlcard pop"><p class="eyebrow">${T('{t} min · the clock is paused · a decision is needed',{t:W('B_LOAD_MIN')})}</p><h2>${T('The bakery next door has an oven failure')}</h2>
 <div class="ovlbody"><p>${T('Its {n} cafés call after your trucks are loaded. Their orders go out on a new run after your last one: run {r}, delivered at {t} min, when croissants keep {s}.',{n:W('B_CAFES_PER_TRUCK'),r:n,t:bakeryAge(n),s:pct(compS(CROISSANT(),bakeryAge(n)))})}</p></div>
@@ -2130,8 +2145,8 @@ WU_EVENT[2]=()=>{const rd=G.wu.rounds[c2Round()],n=rd.res.runs.length+1;
 WU_END[2]=()=>{const res=G.wu.rounds[c2Round()].res;return wuEndCard(T('Round {n} of 2 · all runs delivered',{n:c2Round()}),T('Morning complete'),[[T('Delivered'),pct(res.delivered)],[T('Freshness lost'),pct(res.lost)]]);};
 WU_LED[2]=()=>{const r=c2Round(),res=G.wu.rounds[r].res;return{round:r,delivered:res.delivered,lost:res.lost};};
 function c2Results(r){const res=G.wu.rounds[r].res,rp=rpFull;
-  const rows=res.runs.map(x=>`<tr><td>${T('Run {n}',{n:x.i})}${x.rows.some(g=>g.extra)?` <span class="tag r">${T('next door')}</span>`:''}</td><td>${x.rows.map(g=>grpName(g.id)+(g.swap?` (${T('sourdough instead')})`:'')).join('<br>')}</td><td>${W('B_LOAD_MIN')} + ${W('B_LEG_MIN')} + ${x.i-1} × ${W('B_TRIP_MIN')} = ${x.t}</td><td>${pct(x.Sc)}</td><td>${pct(x.Ss)}</td><td>${rp(sum(x.rows.map(g=>g.sell)))}</td><td>${rp(sum(x.rows.map(g=>g.lost)))}</td></tr>`).join('');
-  return`<div class="fade">`+card(`<h2>${T('Round {n}: results',{n:r})}</h2><table class="wucalc"><tr><th>${T('Run')}</th><th>${T('Cafés')}</th><th>${T('Age at delivery (min)')}</th><th>${T('Croissant')}</th><th>${T('Sourdough')}</th><th>${T('Sellable')}</th><th>${T('Lost to age')}</th></tr>${rows}</table>
+  const rows=res.runs.map(x=>`<tr><td>${T('Run {n}',{n:x.i})}${x.rows.some(g=>g.extra)?` <span class="tag r">${T('next door')}</span>`:''}</td><td data-l="${esc(T('Cafés'))}"><span>${x.rows.map(g=>grpName(g.id)+(g.swap?` (${T('sourdough instead')})`:'')).join('<br>')}</span></td><td data-l="${esc(T('Age at delivery (min)'))}">${W('B_LOAD_MIN')} + ${W('B_LEG_MIN')} + ${x.i-1} × ${W('B_TRIP_MIN')} = ${x.t}</td><td data-l="${esc(T('Croissant'))}">${pct(x.Sc)}</td><td data-l="${esc(T('Sourdough'))}">${pct(x.Ss)}</td><td data-l="${esc(T('Sellable'))}">${rp(sum(x.rows.map(g=>g.sell)))}</td><td data-l="${esc(T('Lost to age'))}">${rp(sum(x.rows.map(g=>g.lost)))}</td></tr>`).join('');
+  return`<div class="fade">`+card(`<h2>${T('Round {n}: results',{n:r})}</h2><table class="wucalc stack"><tr><th>${T('Run')}</th><th>${T('Cafés')}</th><th>${T('Age at delivery (min)')}</th><th>${T('Croissant')}</th><th>${T('Sourdough')}</th><th>${T('Sellable')}</th><th>${T('Lost to age')}</th></tr>${rows}</table>
 ${calcTable([[T('Order value'),T('{n} cafés × {v}',{n:num(res.ordered/W('B_CAFE_ORDER')),v:rp(W('B_CAFE_ORDER'))}),rp(res.ordered)],[T('Sellable on arrival'),T('value × freshness; sourdough instead pays {p} of the croissant value',{p:pct(W('B_SWAP_VALUE'))}),rp(res.sell)],
 [T('Truck hire'),`${res.plan.trucks} × ${rp(W('B_TRUCK_FEE'))}`,'− '+rp(res.hire)],[T('Delivered'),`(${rp(res.sell)} − ${rp(res.hire)}) ÷ ${rp(res.ordered)}`,`<b>${pct(res.delivered)}</b>`,'tot'],[T('Freshness lost'),`${rp(res.lostFresh)} ÷ ${rp(res.ordered)}`,`<b>${pct(res.lost)}</b>`,'tot']])}
 ${res.lostSwap?`<p class="mute hint">${T('Sourdough sent instead of croissants gave up {x} of order value.',{x:rp(res.lostSwap)})}</p>`:''}${c2Curve(res.runs.map(x=>x.t))}`)+`</div>`;}
@@ -2143,25 +2158,25 @@ const C3_SKIP_LINE='In a warehouse, a buffer of extra stock absorbs surprises. C
 VIEWS.c3brief=()=>`${explainerHtml()}${chapterHero(3,T(CH_TAG[3]))}${ALLOW_SKIP_WARMUPS&&G.carry.skipped?`<div class="card note fade"><p>${T(C3_SKIP_LINE)}</p></div>`:''}<div class="bgrid fade">${BRIEF_ITEMS.clock()}</div>`+navRow(nextLbl(G.phase+1));
 const C3_COOK_END=()=>P('COOK_START_MIN')+P('COOK_DURATION_MIN');  // cooking starts 02:00 and ends 06:00
 function c3Plan(){const p=G.wu.plan,vp=P('VEHICLE_PORTIONS'),cap=P('CAP_STD'),ro=viewing(),o=morningOps(p);
-  const rows=o.runs.map(r=>`<tr><td><b>${T('Run {n}',{n:r.i+1})}</b></td><td>${num(r.portions)}</td><td>${P('COOL_MIN')} + ${P('PACK_MIN')} + ${Math.round(r.leg)} + ${r.i} × ${Math.round(2*r.leg)} = <b class="${r.overLimit?'bad':''}">${Math.round(r.hold)}</b>${r.overLimit?` <span class="warn">${T('past the 4-hour limit')}</span>`:''}</td>
-<td><span class="thumbcell">${menuPhoto(r.menu,'none','sm')}<select aria-label="${esc(T('Meal on run {n}',{n:r.i+1}))}" ${ro?'disabled':''} onchange="A.wuPol('plan.runMenu.${r.i}.m',this.value)">${MENU_IDS.map(id=>`<option value="${id}" ${id===r.menu?'selected':''}>${esc(menuName(id))}</option>`).join('')}</select></span></td></tr>`).join('');
+  const rows=o.runs.map(r=>`<tr><td><b>${T('Run {n}',{n:r.i+1})}</b></td><td data-l="${esc(T('Children'))}">${num(r.portions)}</td><td data-l="${esc(T('Minutes from cooking to eating'))}">${P('COOL_MIN')} + ${P('PACK_MIN')} + ${Math.round(r.leg)} + ${r.i} × ${Math.round(2*r.leg)} = <b class="${r.overLimit?'bad':''}">${Math.round(r.hold)}</b>${r.overLimit?` <span class="warn">${T('past the 4-hour limit')}</span>`:''}</td>
+<td data-l="${esc(T('Meal'))}"><span class="thumbcell">${menuPhoto(r.menu,'none','sm')}<select aria-label="${esc(T('Meal on run {n}',{n:r.i+1}))}" ${ro?'disabled':''} onchange="A.wuPol('plan.runMenu.${r.i}.m',this.value)">${MENU_IDS.map(id=>`<option value="${id}" ${id===r.menu?'selected':''}>${esc(menuName(id))}</option>`).join('')}</select></span></td></tr>`).join('');
   return`<div class="fade">`+card(`<h2>${T('Menu and runs')}</h2><p class="lead">${T('Cooking ends at {t}. One vehicle carries {v} portions a run, and each run leaves when it is back. Choose how many runs go out and which meal each one carries.',{t:hhmm(C3_COOK_END()),v:num(vp)})}</p>
 <div class="ctl"><span>${T('Runs this morning')}</span>${seg([1,2,3,4].map(x=>[x,String(x)]),p.runs,v=>ro?'':`A.c3Runs(${v})`)}<small>${T('{r} × {v} = {f} children fed, of {c}',{r:p.runs,v:num(vp),f:num(o.fed),c:num(cap)})}</small></div>
-<table class="wucalc c2plan"><tr><th>${T('Run')}</th><th>${T('Children')}</th><th>${T('Minutes from cooking to eating')}</th><th>${T('Meal')}</th></tr>${rows}</table>
+<table class="wucalc c2plan stack"><tr><th>${T('Run')}</th><th>${T('Children')}</th><th>${T('Minutes from cooking to eating')}</th><th>${T('Meal')}</th></tr>${rows}</table>
 <p class="mute hint">${T('Held = cooling {a} + packing {b} + drive {c} + (run − 1) × round trip {d} min.',{a:P('COOL_MIN'),b:P('PACK_MIN'),c:Math.round(o.leg),d:Math.round(2*o.leg)})}</p>${c3Timeline(o,null)}`)+`</div>`+navRow('▶ '+T('Run the morning'),true,'A.c3Run()');}
 VIEWS.c3plan=()=>c3Plan();
 /* Timeline: cooling and packing, waiting for the vehicle, on the road; the 4-hour line; the cursor is the clock. */
 function c3Timeline(o,m){
-  const W0=660,L=70,base=P('COOL_MIN')+P('PACK_MIN'),end=300,sx=(W0-L-16)/end,rh=26,H=o.runs.length*rh+40,X=t=>L+Math.min(end,t)*sx,lim=P('HOLD_LIMIT_MIN');
-  let s=`<svg viewBox="0 0 ${W0} ${H}" class="wuchart" role="img" aria-label="${esc(T('The morning'))}">`;
-  for(const t of[0,60,120,180,240,300])s+=`<line class="wu-grid" x1="${X(t)}" x2="${X(t)}" y1="6" y2="${H-22}"/><text class="wu-lab" x="${X(t)}" y="${H-8}" text-anchor="middle">${t}</text>`;
-  o.runs.forEach((r,k)=>{const y=8+k*rh,t0=r.hold-r.leg,on=m!=null&&m>=r.hold;
+  const W0=660,L=70,base=P('COOL_MIN')+P('PACK_MIN'),end=300,sx=(W0-L-16)/end,rh=48,H=o.runs.length*rh+62,X=t=>L+Math.min(end,t)*sx,lim=P('HOLD_LIMIT_MIN');
+  let s=`<svg viewBox="0 0 ${W0} ${H}" class="wuchart wide" role="img" aria-label="${esc(T('The morning'))}">`;
+  for(const t of[0,60,120,180,240,300])s+=`<line class="wu-grid" x1="${X(t)}" x2="${X(t)}" y1="26" y2="${H-22}"/><text class="wu-lab" x="${X(t)}" y="${H-8}" text-anchor="middle">${t}</text>`;
+  o.runs.forEach((r,k)=>{const y=30+k*rh,t0=r.hold-r.leg,on=m!=null&&m>=r.hold;
     s+=`<text class="wu-lab" x="${L-8}" y="${y+14}" text-anchor="end">${T('run {n}',{n:r.i+1})}</text><rect class="wu-load" x="${X(0)}" y="${y+4}" width="${base*sx}" height="12"/>`;
     if(t0>base)s+=`<rect class="wu-wait" x="${X(base)}" y="${y+4}" width="${(t0-base)*sx}" height="12"/>`;
     s+=`<rect class="${r.overLimit?'wu-short':'wu-road'}" x="${X(t0)}" y="${y+4}" width="${Math.max(1,(Math.min(end,r.hold)-t0)*sx)}" height="12"/>`;
-    if(on)s+=`<text class="wu-lab${r.overLimit?' wu-breach':''}" x="${X(r.hold)+6>W0-200?X(t0)-6:X(r.hold)+6}" y="${y+14}" text-anchor="${X(r.hold)+6>W0-200?'end':'start'}">${T('{s} eaten safe',{s:pct(r.S)})}${r.overLimit?' · '+T('past the 4-hour limit'):''}</text>`;});
-  s+=`<line class="wu-now" x1="${X(lim)}" x2="${X(lim)}" y1="2" y2="${H-22}"/><text class="wu-lab" x="${X(lim)}" y="${H-24}" text-anchor="middle">${T('4-hour limit')}</text>`;
-  if(m!=null)s+=`<line class="wu-axis" x1="${X(m)}" x2="${X(m)}" y1="2" y2="${H-22}" stroke-width="2"/>`;
+    if(on)s+=`<text class="wu-lab${r.overLimit?' wu-breach':''}" x="${L}" y="${y+38}">${T('{s} eaten safe',{s:pct(r.S)})}${r.overLimit?' · '+T('past the 4-hour limit'):''}</text>`;});
+  s+=`<line class="wu-now" x1="${X(lim)}" x2="${X(lim)}" y1="26" y2="${H-22}"/><text class="wu-lab wu-breach" x="${X(lim)}" y="20" text-anchor="middle">${T('4-hour limit')}</text>`;
+  if(m!=null)s+=`<line class="wu-axis" x1="${X(m)}" x2="${X(m)}" y1="26" y2="${H-22}" stroke-width="2"/>`;
   return s+`</svg><div class="legend"><span><i class="lg wu-load"></i>${T('cooling + packing')}</span><span><i class="lg wu-wait"></i>${T('waiting for a vehicle')}</span><span><i class="lg wu-road"></i>${T('on the road')}</span><span class="mute">${T('Minutes after cooking ends.')}</span></div>`;}
 const C3_MS_PER_MIN=120;  // display only: a four-run morning plays in about 37 s at 1×
 const c3End=o=>Math.round(o.runs[o.runs.length-1].hold)+20;
@@ -2178,8 +2193,8 @@ WU_END[3]=()=>{const o=G.wu.res,late=sum(o.runs.filter(r=>r.overLimit).map(r=>r.
 WU_LED[3]=()=>{const o=G.wu.res;return{reach:o.reach,nutrition:o.nutrition,safety:o.safety,delivered:o.delivered};};
 function c3Results(){const o=G.wu.res;
   const sExpr=r=>r.hold<=r.weak.lam?T('1 (held ≤ λ)'):`0.5^((${Math.round(r.hold)} − ${r.weak.lam}) ÷ ${r.weak.h}) = ${pct(r.S)}`;
-  const rows=o.runs.map(r=>`<tr><td>${T('Run {n}',{n:r.i+1})}</td><td>${num(r.portions)}</td><td class="${r.overLimit?'bad':''}">${Math.round(r.hold)}${r.overLimit?` <span class="tag r">${T('past the 4-hour limit')}</span>`:''}</td><td>${menuName(r.menu)}</td><td>${compName(r.weak)} (λ ${r.weak.lam}, h ${r.weak.h})</td><td>${sExpr(r)}</td><td>${num(r.risk)}</td></tr>`).join('');
-  return`<div class="fade">`+card(`<h2>${T('The morning: results')}</h2><table class="wucalc"><tr><th>${T('Run')}</th><th>${T('Children')}</th><th>${T('Held (min)')}</th><th>${T('Meal')}</th><th>${T('Weakest component')}</th><th>${T('Safe share S')}</th><th>${T('Portions at risk')}</th></tr>${rows}</table>
+  const rows=o.runs.map(r=>`<tr><td><b>${T('Run {n}',{n:r.i+1})}</b></td><td data-l="${esc(T('Children'))}">${num(r.portions)}</td><td data-l="${esc(T('Held (min)'))}" class="${r.overLimit?'bad':''}">${Math.round(r.hold)}${r.overLimit?` <span class="tag r">${T('past the 4-hour limit')}</span>`:''}</td><td data-l="${esc(T('Meal'))}">${menuName(r.menu)}</td><td data-l="${esc(T('Weakest component'))}">${compName(r.weak)} (λ ${r.weak.lam}, h ${r.weak.h})</td><td data-l="${esc(T('Safe share S'))}">${sExpr(r)}</td><td data-l="${esc(T('Portions at risk'))}">${num(r.risk)}</td></tr>`).join('');
+  return`<div class="fade">`+card(`<h2>${T('The morning: results')}</h2><table class="wucalc stack"><tr><th>${T('Run')}</th><th>${T('Children')}</th><th>${T('Held (min)')}</th><th>${T('Meal')}</th><th>${T('Weakest component')}</th><th>${T('Safe share S')}</th><th>${T('Portions at risk')}</th></tr>${rows}</table>
 <p class="mute hint">${T('Portions at risk on a run = children × (1 − S). S is the same lag-then-halving curve as Freshness in Chapter 2, here labelled Safety: 1 until λ, then halving every h minutes. A meal is as safe as its weakest component.')}</p>
 ${calcTable([[T(DIMS.reach),`${num(o.fed)} ÷ ${num(o.cap)}`,sc(o.reach)],[T(DIMS.nutrition),T('Σ children × menu fit × nutrient score ÷ children fed'),sc(o.nutrition)],[T(PAIRS.delivered.label),`(${sc(o.reach)} + ${sc(o.nutrition)}) ÷ 2`,`<b>${sc(o.delivered)}</b>`,'tot'],
 [T(DIMS.safety),`100 × (1 − ${num(o.risk)} ÷ ${num(o.fed)})`,`<b>${sc(o.safety)}</b>`,'tot']])}
