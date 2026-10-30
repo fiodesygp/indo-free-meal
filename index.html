@@ -679,6 +679,17 @@ body{padding-left:0}
 .gate .gateq{margin:var(--sp-6) 0 var(--sp-3)}.gate .gatebtns{gap:var(--sp-3);flex-wrap:wrap}.gate ul{margin:0;padding-left:var(--sp-5)}
 /* Phones: on the gate the sticky header drops its ledger tiles and their note, so the question and both buttons fit one screen. */
 @media(max-width:640px){body.atgate #hdr .ledger,body.atgate #hdr .lednote{display:none}.gate .bridgegrid{gap:var(--sp-2)}.gate .gateq{font:var(--t-title-s);margin:var(--sp-4) 0 var(--sp-2)}}
+#nav .navchip.skipped{color:var(--mute);opacity:.7}#nav .navchip.skipped b{background:none;border:1.5px dashed var(--mute);color:var(--mute)}#nav .navchip small{font:var(--t-caption)}
+.choice .card{display:flex;flex-direction:column;margin:0}.choice .card p:last-of-type{flex:1}.choice .card button{align-self:flex-start;margin-top:var(--sp-3)}
+/* Brief diagrams: the wide layout on desktop, the narrow one on phones. */
+.dg svg{display:block;width:100%;height:auto;max-width:760px;margin:0 auto}.dg .dg-n{display:none}@media(max-width:640px){.dg .dg-w{display:none}.dg .dg-n{display:block}}
+.dg-lab{font:var(--t-caption);fill:var(--ink)}.dg-lab.m{fill:var(--mute)}.dg-lab.b{font-weight:var(--w-demi)}.dg-lab.cost{fill:var(--cost);font-weight:var(--w-demi)}
+.dg-frame{fill:var(--panel);stroke:var(--line);stroke-width:1.5}.dg-obj{fill:var(--line);stroke:var(--mute);stroke-width:1.5;stroke-linejoin:round}.dg-dark{fill:var(--mute)}.dg-ink{fill:var(--ink)}
+.dg-stock{fill:var(--green-soft-2)}.dg-safe{fill:var(--green-soft);stroke:var(--green-ink);stroke-width:1.2;stroke-dasharray:4 3}.dg-plank{fill:var(--mute)}
+.dg-tag{fill:var(--panel);stroke:var(--cost);stroke-width:1.2}.dg-waste{fill:var(--cost)}.dg-cut{stroke:var(--panel);stroke-width:1.5}
+.dg-flow{stroke:var(--mute);stroke-width:2}.dg-head{fill:var(--mute)}.dg-dash{fill:none;stroke:var(--cost);stroke-width:1.5;stroke-dasharray:4 3}
+.dg-awn{fill:var(--green-ink)}.dg-opt{opacity:.45}.dg-run{stroke:var(--mute);stroke-width:1.2;stroke-dasharray:3 3}
+.dg-say{margin:var(--sp-4) 0 0;font:var(--t-body-s)}
 #nav .navdiv.on{background:var(--green-ink);width:4px;box-shadow:0 0 0 3px var(--green-soft)}
 .bridgegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:640px){.bridgegrid{grid-template-columns:1fr}}
 @media (max-width:640px){
@@ -937,10 +948,10 @@ const DIMS = {reach:'Reach',nutrition:'Nutritional adequacy',safety:'Food safety
 
 /* ---- Learning ladder: five chapters (design choices, not data) ----
    Chapters 1–2 are warm-ups in familiar settings (a grocery store, a bakery); 3–5 are MBG in growing scope.
-   ALLOW_SKIP_WARMUPS: when true, a player may skip Chapters 1–2, and Chapter 3's brief adds the safety-stock line.
+   Before them, an entry chapter (0: intro and choice) lets the player take the basics (path 'basics') or go straight
+   to Chapter 3 (path 'direct'); only the direct path adds the safety-stock line to Chapter 3's brief.
    CHAPTER_SCOPE scopes the MBG engine per chapter: periods (null = PARAMS.PERIODS), whether events and weather are
    drawn, and how many provinces the player runs. Chapters 1–3 do not use the semester engine. */
-const ALLOW_SKIP_WARMUPS=false;
 const CHAPTER_IDS=[1,2,3,4,5];
 const CHAPTER_SCOPE={
   1:{periods:null,events:false,regions:0},
@@ -991,7 +1002,7 @@ let G;
 /* A reset restarts the current chapter: the chapter, what earlier chapters hand forward (carry) and chapter
    timings survive it. */
 function resetGame(){
-  const keep=G?{chapter:G.chapter,carry:G.carry,chTimes:G.chTimes}:{chapter:1,carry:{},chTimes:{}};
+  const keep=G?{chapter:G.chapter,carry:G.carry,chTimes:G.chTimes}:{chapter:0,carry:{},chTimes:{}};
   G = {...keep,wu:null,phase:0,
     dec:{values:['delivered','exposure','cost'],posture:null,regions:[],regency:{},radius:{},siting:{},
       sourcing:{arch:null,rails:false,receipts:false},
@@ -1018,7 +1029,6 @@ function chapterCarry(n){
   if(n===4){const rid=G.dec.regions[0];if(rid)G.carry.ch4={rid,regency:G.dec.regency[rid],radius:G.dec.radius[rid],siting:clone(G.dec.siting[rid]),arch:G.dec.sourcing.arch,menu:clone(G.dec.menu)};}
 }
 resetGame();
-G.chTimes[G.chapter]={start:Date.now()};
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -1748,8 +1758,10 @@ const NAV_CAT_ICON={brief:NAV_ICONS.brief,plan:'<rect x="5" y="4" width="14" hei
 /* Chapters: each has its own pages, grouped under the same Brief / Plan / Run / Results categories, so the shell
    (navigation, ledger, run controls) is learned once in Chapter 1. Chapter 5 is the full simulation. A chapter
    ends on a bridge card ('bridge'), except Chapter 5, which ends on the debrief. Internally chapters stay 1–5;
-   players see them grouped into two parts (PARTS): Practice 1–2, then Stage 1–3. */
+   players see them grouped into two parts (PARTS): Practice 1–2, then Stage 1–3. Chapter 0 is the entry before both
+   parts: the intro (the "What is MBG?" explainer) and the choice of path. */
 const CHAPTER_PAGES={
+  0:{title:'Introduction',short:'Intro',phases:[['intro','Introduction'],['choice','Choose your path']],cats:[['brief',[0,1]]],y0:0},
   1:{title:'The Grocery Store',short:'Grocery store',phases:[['c1brief','Brief'],['c1policy','Ordering policy'],['c1run','The round'],['bridge','What comes next']],cats:[['brief',[0]],['plan',[1]],['run',[2]],['results',[3]]],y0:0},
   2:{title:'The Bakery',short:'Bakery',phases:[['c2brief','Brief'],['c2round','Round 1'],['c2round','Round 2'],['gate','Ready check']],cats:[['brief',[0]],['run',[1,2]],['results',[3]]],y0:0},  // ends on the gate, not a bridge
   3:{title:'One Kitchen, One Morning',short:'One kitchen',phases:[['c3brief','Brief'],['c3plan','Menu and runs'],['c3run','The morning'],['bridge','What comes next']],cats:[['brief',[0]],['plan',[1]],['run',[2]],['results',[3]]],y0:0},
@@ -1760,7 +1772,7 @@ function setChapter(n){const c=CHAPTER_PAGES[n];PHASES=c.phases;NAV_CATS=c.cats;
 const chTitle=n=>T(CHAPTER_PAGES[n].title);
 /* Two parts. Part 1 (Supply Chain Basics) holds the practice chapters, Part 2 (The MBG Project) the MBG stages. */
 const PARTS={1:{title:'Supply Chain Basics',chapters:[1,2]},2:{title:'The MBG Project',chapters:[3,4,5]}};
-const partOf=n=>n<=2?1:2;
+const partOf=n=>n<1?null:n<=2?1:2;  // the entry chapter (0) belongs to neither part
 const inPart=n=>PARTS[partOf(n)].chapters.indexOf(n)+1;  // 1-based position inside its part
 const chLabel=n=>partOf(n)===1?T('Practice {i}',{i:inPart(n)}):T('Stage {i}',{i:inPart(n)});
 const chPos=n=>{const p=partOf(n),m=PARTS[p].chapters.length;return`${T(PARTS[p].title)} · ${p===1?T('Practice {i} of {m}',{i:inPart(n),m}):T('Stage {i} of {m}',{i:inPart(n),m})}`;};
@@ -1784,15 +1796,17 @@ function navHtml(){
 }
 /* Progress above the categories: the two parts as labelled groups with a divider between them. Chips are numbered
    within their part. On phones the chips show numbers only and a caption names the current part and chapter.
-   Chapters are played in order; the row only shows where you are (and, when ALLOW_SKIP_WARMUPS is on, offers to
-   skip the basics). */
+   Chapters are played in order; the row only shows where you are. The intro comes first, before both parts; on the
+   direct path Part 1's chips stay visible, greyed out and marked skipped. */
 function chapterRow(){
-  const cur=G.chapter,skip=ALLOW_SKIP_WARMUPS&&cur<3&&!simRunning();
-  const chip=n=>{const st=n<cur?'done':n===cur?'on':'locked';
-    return`<span class="navchip ${st}" ${n===cur?'aria-current="step"':''} title="${esc(chPos(n)+': '+chTitle(n))}"><b>${n<cur?navSvg(NAV_TICK,14):inPart(n)}</b><span>${T(CHAPTER_PAGES[n].short)}</span></span>`;};
+  const cur=G.chapter,skipped=n=>G.carry.path==='direct'&&partOf(n)===1;
+  const chip=n=>{const st=skipped(n)?'skipped':n<cur?'done':n===cur?'on':'locked';
+    return`<span class="navchip ${st}" ${n===cur?'aria-current="step"':''} title="${esc(chPos(n)+': '+chTitle(n)+(st==='skipped'?' · '+T('skipped'):''))}"><b>${st==='done'?navSvg(NAV_TICK,14):inPart(n)}</b><span>${T(CHAPTER_PAGES[n].short)}${st==='skipped'?` <small>${T('skipped')}</small>`:''}</span></span>`;};
+  const intro=`<span class="navchip ${cur>0?'done':'on'}" ${cur===0?'aria-current="step"':''} title="${esc(chTitle(0))}"><b>${cur>0?navSvg(NAV_TICK,14):'i'}</b><span>${T(CHAPTER_PAGES[0].short)}</span></span>`;
+  const cap=cur===0?chTitle(0):`${T(PARTS[partOf(cur)].title)} · ${chLabel(cur)}: ${chTitle(cur)}`;
   const grp=p=>`<span class="navpart ${partOf(cur)===p?'on':''}" role="group" aria-label="${esc(T(PARTS[p].title))}"><span class="navpartl">${T(PARTS[p].title)}</span>${PARTS[p].chapters.map(chip).join('<span class="navchsep" aria-hidden="true"></span>')}</span>`;
   const atGate=PHASES[G.phase]&&PHASES[G.phase][0]==='gate';
-  return`<div class="navch" aria-label="${esc(T('Progress'))}">${grp(1)}<span class="navdiv ${atGate?'on':''}" ${atGate?`aria-current="step" title="${esc(T('Ready for a bigger project?'))}"`:'aria-hidden="true"'}></span>${grp(2)}${skip?`<button class="ghost small" onclick="A.skipWarmups()">${T('Skip the basics →')}</button>`:''}</div><p class="navchcap">${T(PARTS[partOf(cur)].title)} · ${chLabel(cur)}: ${chTitle(cur)}</p>`;
+  return`<div class="navch" aria-label="${esc(T('Progress'))}">${intro}<span class="navdiv" aria-hidden="true"></span>${grp(1)}<span class="navdiv ${atGate?'on':''}" ${atGate?`aria-current="step" title="${esc(T('Ready for the MBG Project?'))}"`:'aria-hidden="true"'}></span>${grp(2)}</div><p class="navchcap">${cap}</p>`;
 }
 function navScroll(){const r=document.querySelector('#nav .nav2'),a=r&&r.querySelector('.navs.on');if(r&&a&&r.scrollWidth>r.clientWidth)r.scrollLeft=Math.max(0,a.offsetLeft-r.clientWidth/2+a.offsetWidth/2);}
 /* Logo: a stack of reusable steel meal trays (ompreng), the top one full (rice, egg, greens, banana), with a small
@@ -1804,11 +1818,11 @@ function renderHeader(){
   const last=G.results.filter(Boolean).slice(-1)[0];const L=last&&last.ledger;
   const steps=navHtml();
   const cu=v=>`data-cu="${v}"`;
-  const wu=G.chapter<4?ledgerWarmup():null;
+  const wu=G.chapter<4?ledgerWarmup():null,entry=G.chapter===0;  // the entry pages have no ledger
   const pair=id=>{const d=PAIRS[id].dims;return`<div class="pair ${id}"><div class="t"><span>${T(PAIRS[id].label)} ${info(id==='delivered'?'uptake':id==='exposure'?'hazard':'ledger')}</span><span class="pscore"><b ${L?cu(L[id]):''}>${L?sc(L[id]):'–'}</b><small>/ 100</small></span></div><div class="dims">${d.map(x=>`<span>${T(DIMS[x])}<br><b ${L&&!(x==='plate'&&!L.plateVisible)?cu(L[x]):''}>${L?sc(L[x])+(x==='plate'&&!L.plateVisible?'%':''):'·'}</b>${L&&!(x==='plate'&&!L.plateVisible)?'<small>/100</small>':''}</span>`).join('')}</div><p class="pnote">${T('= average of the two, each scored 0–100')}</p></div>`;};
   const lang=`<div class="seg lang" role="group" aria-label="${esc(T('Language'))}">${LANGS.map(([c,s,n])=>`<button class="${LANG===c?'on':''}" lang="${c}" title="${n}" aria-pressed="${LANG===c}" onclick="A.setLang('${c}')">${s}</button>`).join('')}</div>`;
   if($('nav')){$('nav').innerHTML=steps;navScroll();}
-  $('hdr').innerHTML=`<div class="brand"><div class="brandmark">${logoSvg('')}<div><small>Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</small><h1>${gameTitle()}</h1></div></div><span class="mute lednote" style="font-size:12px">${wu?wu.note:last?T('Ledger after {p}',{p:periodLabel(last.y)}):T('Ledger fills in after the first semester')}</span><span class="row" style="gap:8px">${lang}${canBack()?`<button class="ghost" onclick="A.back()">← ${T('Back')}</button>`:''}<button class="ghost" onclick="A.restart()">${T('Restart')}</button></span></div>${wu?`<div class="ledger n${wu.pairs.length}">${wu.pairs.map(wuPair).join('')}</div>`:`<div class="ledger">${['delivered','exposure','cost'].map(pair).join('')}</div>`}`;
+  $('hdr').innerHTML=`<div class="brand"><div class="brandmark">${logoSvg('')}<div><small>Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</small><h1>${gameTitle()}</h1></div></div><span class="mute lednote" style="font-size:12px">${entry?'':wu?wu.note:last?T('Ledger after {p}',{p:periodLabel(last.y)}):T('Ledger fills in after the first semester')}</span><span class="row" style="gap:8px">${lang}${canBack()?`<button class="ghost" onclick="A.back()">← ${T('Back')}</button>`:''}<button class="ghost" onclick="A.restart()">${T('Restart')}</button></span></div>${entry?'':wu?`<div class="ledger n${wu.pairs.length}">${wu.pairs.map(wuPair).join('')}</div>`:`<div class="ledger">${['delivered','exposure','cost'].map(pair).join('')}</div>`}`;
 }
 /* Chapters 1–3 ledger: the same pair tiles, opened progressively. Ch1 shows Stockouts · Waste, Ch2 Delivered ·
    Freshness lost, Ch3 Delivered and Exposure (food safety only). Values come from the chapter's last result, G.wu.led. */
@@ -2013,8 +2027,68 @@ const CH_TAG={
   3:'One school-meal kitchen, one morning, up to 2,500 children.',
   4:'One regency, one semester. You place the kitchens, size them, and choose who supplies them.',
 };
-VIEWS.c1brief=()=>chapterHero(1,T(CH_TAG[1]))+navRow(nextLbl(G.phase+1));
-VIEWS.c2brief=()=>chapterHero(2,T(CH_TAG[2]))+navRow(nextLbl(G.phase+1));
+/* Brief diagrams (Practice 1–2): what the player will do, in one glance, before any text. Inline SVG in the Asphalt
+   tokens (.dg-* classes), icons drawn as plain shapes. Two layouts: wide (left to right) for desktop and narrow (top
+   to bottom) for phones, each with a viewBox close to its rendered width so labels stay at caption size. Every number
+   is read from WARMUP or the engine. */
+const dgLab=(x,y,t,cls='',a='middle')=>`<text class="dg-lab ${cls}" x="${x}" y="${y}" text-anchor="${a}">${esc(t)}</text>`;
+const dgArrow=(x1,y1,x2,y2,cls='')=>{const a=Math.atan2(y2-y1,x2-x1),h=(d,s)=>`${(x2-9*Math.cos(a)+s*5*Math.sin(a)).toFixed(1)},${(y2-9*Math.sin(a)-s*5*Math.cos(a)).toFixed(1)}`;
+  return`<line class="dg-flow ${cls}" x1="${x1}" y1="${y1}" x2="${(x2-8*Math.cos(a)).toFixed(1)}" y2="${(y2-8*Math.sin(a)).toFixed(1)}"/><polygon class="dg-head ${cls}" points="${x2},${y2} ${h(0,1)} ${h(0,-1)}"/>`;};
+const DG_ICON={  // centred on (0,0)
+  warehouse:'<path class="dg-obj" d="M-22 -2L0 -16 22 -2V16H-22z"/><rect class="dg-dark" x="-7" y="3" width="14" height="13"/>',
+  truck:'<rect class="dg-obj" x="-24" y="-13" width="31" height="19" rx="2"/><path class="dg-obj" d="M7 -7h9l6 7v6H7z"/><circle class="dg-ink" cx="-14" cy="8" r="4"/><circle class="dg-ink" cx="13" cy="8" r="4"/>',
+  shopper:'<circle class="dg-dark" cy="-13" r="5.5"/><path class="dg-dark" d="M-9 12v-7a9 9 0 0 1 18 0v7z"/>',
+  bakery:'<rect class="dg-obj" x="9" y="-22" width="7" height="12"/><path class="dg-obj" d="M-22 -2L0 -16 22 -2V16H-22z"/><path class="dg-dark" d="M-8 16v-7a8 8 0 0 1 16 0v7z"/>',
+  cafe:'<rect class="dg-obj" x="-6" y="-3" width="12" height="10"/><rect class="dg-awn" x="-8" y="-9" width="16" height="6" rx="1"/>',
+  bin:'<rect class="dg-waste" x="-12" y="-14" width="24" height="4" rx="1"/><path class="dg-waste" d="M-10 -8h20l-2.5 22h-15z"/><path class="dg-cut" d="M-4 -4v14M4 -4v14"/>',
+};
+const dgIcon=(k,x,y)=>`<g transform="translate(${x} ${y})">${DG_ICON[k]}</g>`;
+const dgSay=(dec,score)=>`<p class="dg-say"><b>${T('You decide:')}</b> ${T(dec)}<br><b>${T('You\'re scored on:')}</b> ${T(score)}</p>`;
+/* The grocery shelf, 230 × 170: two products side by side, each a stock bar under a dashed safety-stock band. Bread
+   carries its shelf-life tag. Returns the drawing and where its waste line leaves the bread bar. */
+function dgShelf(x,y){const col=(cx,name)=>`${dgLab(cx,44,T('Safety stock'),'m')}<rect class="dg-safe" x="${cx-32}" y="50" width="64" height="22"/><rect class="dg-stock" x="${cx-32}" y="72" width="64" height="60"/>${dgLab(cx,106,T('Stock'))}${dgLab(cx,154,T(name),'b')}`;
+  return{svg:`<g transform="translate(${x} ${y})"><rect class="dg-frame" width="230" height="170" rx="8"/>${dgLab(12,23,T('Store shelf'),'b','start')}
+<rect class="dg-tag" x="110" y="9" width="110" height="20" rx="10"/>${dgLab(165,23,T('{n}-day shelf life',{n:W('G_BREAD_LIFE')}),'cost')}
+${col(65,'Dry goods')}${col(165,'Bread')}<rect class="dg-plank" x="10" y="132" width="210" height="5" rx="2"/></g>`,out:[x+197,y+110]};}
+function groceryDiagram(){
+  const lead=T('{n}-day lead time',{n:W('G_LEAD')}),waste=T('expired → waste');
+  const w=(()=>{const sh=dgShelf(200,20);return`<svg class="dg-w" viewBox="0 0 640 205" role="img" aria-label="${esc(T('Supplier → truck → store shelf → shoppers'))}">
+${dgIcon('warehouse',48,98)}${dgLab(48,140,T('Supplier'),'b')}${dgArrow(84,110,190,110)}${dgIcon('truck',136,92)}${dgLab(136,132,lead,'m')}
+${sh.svg}${dgArrow(438,110,548,110)}${dgIcon('shopper',580,104)}${dgIcon('shopper',604,104)}${dgLab(592,140,T('Shoppers'),'b')}
+<path class="dg-dash" d="M${sh.out[0]} ${sh.out[1]}Q430 168 448 172"/>${dgIcon('bin',462,176)}${dgLab(482,182,waste,'cost','start')}</svg>`;})();
+  const n=(()=>{const sh=dgShelf(10,126);return`<svg class="dg-n" viewBox="0 0 330 400" role="img" aria-label="${esc(T('Supplier → truck → store shelf → shoppers'))}">
+${dgIcon('warehouse',40,30)}${dgLab(76,35,T('Supplier'),'b','start')}${dgArrow(40,52,40,120)}${dgIcon('truck',86,84)}${dgLab(116,90,lead,'m','start')}
+${sh.svg}<path class="dg-dash" d="M${sh.out[0]} ${sh.out[1]}Q270 240 290 262"/>${dgIcon('bin',292,276)}${dgLab(320,316,waste,'cost','end')}
+${dgArrow(40,298,40,344)}${dgIcon('shopper',32,372)}${dgIcon('shopper',54,372)}${dgLab(80,376,T('Shoppers'),'b','start')}</svg>`;})();
+  return`<div class="card dg fade">${w}${n}${dgSay('how much to order and how much extra to keep, for each product.','stockouts and waste.')}</div>`;}
+VIEWS.c1brief=()=>chapterHero(1,T(CH_TAG[1]))+groceryDiagram()+navRow(nextLbl(G.phase+1));
+/* The bakery: the trucks fan out to the three café groups, one run per group with a single truck (more trucks bring
+   groups forward into run 1). Below, the freshness curves (compS, the same as meal safety) with the delivery time of
+   each run, from bakeryAge(). */
+function bakeryDiagram(){
+  const ids=Object.keys(CAFE_GROUPS).filter(k=>k!=='N'),nT=B_TRUCK_OPTIONS.length,ages=ids.map((_,k)=>bakeryAge(k+1)),TMAX=240;
+  const trucks=T('{a}–{b} trucks',{a:Math.min(...B_TRUCK_OPTIONS),b:Math.max(...B_TRUCK_OPTIONS)}),more=T('More trucks: more groups go in run 1.'),per=T('{n} cafés',{n:W('B_CAFES_PER_TRUCK')});
+  const cafes=(x,y)=>Array.from({length:W('B_CAFES_PER_TRUCK')},(_,k)=>dgIcon('cafe',x+k*18,y)).join('');
+  const chart=(L,R,top,bot)=>{const sx=(R-L)/TMAX,X=t=>L+t*sx,Y=v=>bot-v*(bot-top),line=c=>{let d='';for(let t=0;t<=TMAX;t+=5)d+=(t?'L':'M')+X(t).toFixed(1)+' '+Y(compS(c,t)).toFixed(1);return d;};
+    let s=`${dgLab(4,top-12,T('Freshness'),'b','start')}<line class="wu-axis" x1="${L}" x2="${R}" y1="${bot}" y2="${bot}"/>`;
+    for(let t=0;t<=TMAX;t+=60)s+=`<line class="wu-grid" x1="${X(t)}" x2="${X(t)}" y1="${top}" y2="${bot}"/>${dgLab(X(t),bot+16,t,'m')}`;
+    for(const v of[0,0.5,1])s+=dgLab(L-6,Y(v)+4,pct(v),'m','end');
+    s+=`<path class="wu-cro" d="${line(CROISSANT())}"/><path class="wu-sou" d="${line(SOURDOUGH())}"/>`;
+    ages.forEach((t,k)=>{s+=`<line class="dg-run" x1="${X(t)}" x2="${X(t)}" y1="${top-4}" y2="${bot}"/><circle class="wu-dot cro" cx="${X(t)}" cy="${Y(compS(CROISSANT(),t))}" r="4"/><circle class="wu-dot sou" cx="${X(t)}" cy="${Y(compS(SOURDOUGH(),t))}" r="4"/>${dgLab(X(t),top-12,T('run {n}',{n:k+1}),'b')}`;});
+    return s+dgLab(R,bot+34,T('minutes after baking'),'m','end');};
+  const w=`<svg class="dg-w" viewBox="0 0 640 400" role="img" aria-label="${esc(T('Bakery → trucks → café groups, and freshness over time'))}">
+${dgIcon('bakery',48,88)}${dgLab(48,128,T('Bakery'),'b')}${dgArrow(80,92,116,92)}
+${Array.from({length:nT},(_,k)=>`<g class="${k?'dg-opt':''}">${dgIcon('truck',148,60+k*34)}</g>`).join('')}${dgLab(148,60+nT*34+4,trucks,'m')}
+${ids.map((id,k)=>{const gy=36+k*58,x2=372,ly=92+(gy-92)*0.55;return dgArrow(184,92,x2,gy)+dgLab(282,ly-7,T('run {n}',{n:k+1}),'b')+cafes(394,gy)+dgLab(480,gy+4,grpName(id),'b','start')+dgLab(480,gy+20,per,'m','start');}).join('')}
+${dgLab(282,198,more,'m')}${chart(84,620,244,350)}</svg>`;
+  const n=`<svg class="dg-n" viewBox="0 0 330 590" role="img" aria-label="${esc(T('Bakery → trucks → café groups, and freshness over time'))}">
+${dgIcon('bakery',40,34)}${dgLab(74,39,T('Bakery'),'b','start')}${dgArrow(40,56,40,92)}
+${Array.from({length:nT},(_,k)=>`<g class="${k?'dg-opt':''}">${dgIcon('truck',40+k*56,112)}</g>`).join('')}${dgLab(40+nT*56-18,117,trucks,'m','start')}
+<line class="dg-flow" x1="40" y1="128" x2="40" y2="${172+(ids.length-1)*56}"/>
+${ids.map((id,k)=>{const gy=172+k*56;return dgArrow(40,gy,112,gy)+dgLab(76,gy-7,T('run {n}',{n:k+1}),'b')+cafes(128,gy)+dgLab(118,gy+24,grpName(id)+' · '+per,'b','start');}).join('')}
+${dgLab(10,348,more,'m','start')}${chart(48,314,414,530)}</svg>`;
+  return`<div class="card dg fade">${w}${n}<div class="legend"><span><i class="lg wu-cro"></i>${T('Croissant')}</span><span><i class="lg wu-sou"></i>${T('Sourdough')}</span></div>${dgSay('how many trucks, which cafés go last, and croissant or sourdough for each group.','value delivered, after freshness loss and truck hire.')}</div>`;}
+VIEWS.c2brief=()=>chapterHero(2,T(CH_TAG[2]))+bakeryDiagram()+navRow(nextLbl(G.phase+1));
 /* Pages a chapter has not built yet show only their name (removed as each chapter lands). */
 const pendingPage=()=>card(`<h2>${pageName(G.phase)}</h2>`)+navRow(nextLbl(G.phase+1));
 ['c1policy','c1run','c2round','c3plan','c3run'].forEach(k=>{if(!VIEWS[k])VIEWS[k]=pendingPage;});
@@ -2028,16 +2102,22 @@ VIEWS.bridge=()=>{const n=G.chapter,[a,b]=BRIDGE[n];
   return`<div class="card bridge fade"><p class="eyebrow">${chPos(n)} · ${T('complete')}</p><h2>${chTitle(n)}</h2>
 <div class="bridgegrid"><div><h4>${T('What you just learned')}</h4><p>${T(a)}</p></div><div><h4>${T('What changes in {c}',{c:chLabel(n+1)})}</h4><p>${T(b)}</p></div></div></div>`+
   navRow(T('Start {c}: {t} →',{c:chLabel(n+1),t:chTitle(n+1)}),true,'A.nextChapter()');};
+/* Entry (chapter 0). The intro carries the "What is MBG?" explainer; the choice page sends the player into the
+   basics (Practice 1) or straight to the MBG Project (Stage 1). No default: each card has its own button. */
+VIEWS.intro=()=>`<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="kicker">Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</p><h2>${gameTitle()}</h2></div></div></div>${explainerHtml()}`+navRow(nextLbl(G.phase+1));
+VIEWS.choice=()=>`<div class="bridgegrid choice fade">
+<div class="card"><p class="eyebrow">${T(PARTS[1].title)} · ${T('about {n} min',{n:17})}</p><h3>${T('Learn supply chain basics first')}</h3><p>${T('Practice 1: The Grocery Store, then Practice 2: The Bakery. Then the MBG Project.')}</p><button class="right" onclick="A.choosePath('basics')">${T('Start with the basics')}</button></div>
+<div class="card"><p class="eyebrow">${T(PARTS[2].title)}</p><h3>${T('Go straight to the MBG Project')}</h3><p>${T('Start at Stage 1. For players already comfortable with supply chain concepts.')}</p><button class="right" onclick="A.choosePath('direct')">${T('Start the MBG Project')}</button></div></div>`+(canBack()?`<div class="row nav">${backBtn()}</div>`:'');
 /* The gate between the parts: replaces Practice 2's bridge card. One screen: what was practised, what comes next,
    and a choice to go on or replay the basics. No quiz, no scoring. */
 const GATE_TAKEAWAYS=['A buffer absorbs uncertainty, but a perishable buffer spoils.','Run position sets product age.','Route choice can substitute for more trucks.'];
 VIEWS.gate=()=>`<div class="card bridge gate fade"><p class="eyebrow">${T(PARTS[1].title)} · ${T('complete')}</p>
 <div class="bridgegrid"><div><h4>${T('What you just practised')}</h4><ul>${GATE_TAKEAWAYS.map(t=>`<li>${T(t)}</li>`).join('')}</ul></div>
 <div><h4>${T('What\'s next')}</h4><p>${T('You will now run part of Indonesia\'s free school meals programme, {mbg}. The same physics apply, but the product is cooked food for children, and it cannot be held.',{mbg:g('MBG',T('Makan Bergizi Gratis (Free Nutritious Meals)'))})}</p></div></div>
-<h2 class="gateq">${T('Ready for a bigger project?')}</h2>
-<div class="row gatebtns"><button class="ghost" onclick="A.replayBasics()">${T('Replay the basics')}</button><button class="right" onclick="A.nextChapter()">${T('I\'m ready — start the MBG Project')}</button></div></div>`+(viewing()?roNav():canBack()?`<div class="row nav">${backBtn()}</div>`:'');
+<h2 class="gateq">${T('Ready for the MBG Project?')}</h2>
+<div class="row gatebtns"><button class="ghost" onclick="A.replayBasics()">${T('Replay the basics')}</button><button class="right" onclick="A.nextChapter()">${T('Continue to the MBG Project')}</button></div></div>`+(viewing()?roNav():canBack()?`<div class="row nav">${backBtn()}</div>`:'');
 /* Moving between chapters: a fresh game state for the new chapter, keeping what earlier chapters hand forward. */
-function startChapter(n){if(G.anim)G.anim.loop=false;wuStop();G.chapter=n;resetGame();setChapter(n);const t=G.chTimes[n]=G.chTimes[n]||{};if(!t.start){t.start=Date.now();t.end=null;}render();}
+function startChapter(n){if(G.anim)G.anim.loop=false;wuStop();G.chapter=n;resetGame();setChapter(n);if(n>0){const t=G.chTimes[n]=G.chTimes[n]||{};if(!t.start){t.start=Date.now();t.end=null;}}render();}
 function wuStop(){if(G&&G.wu&&G.wu.anim)G.wu.anim.loop=false;}
 
 /* ---------- Warm-up run animation (Chapters 1–3) ----------
@@ -2185,9 +2265,9 @@ ${res.lostSwap?`<p class="mute hint">${T('Sourdough sent instead of croissants g
 
 /* ---------- Chapter 3: MBG, one kitchen, one morning ----------
    The MBG engine scoped to one kitchen: kitchenOps() with a meal per run. The brief carries one of the four facts
-   (the clock). If the player skipped Chapters 1–2 (ALLOW_SKIP_WARMUPS), it also carries the safety-stock line. */
+   (the clock). On the direct path (the player skipped Chapters 1–2) it also carries the safety-stock line. */
 const C3_SKIP_LINE='In a warehouse, a buffer of extra stock absorbs surprises. Cooked food cannot be buffered: every portion\'s four-hour clock starts when cooking ends.';
-VIEWS.c3brief=()=>`<div class="card mission fade parthead"><p class="eyebrow">${T('Part {n}',{n:2})}</p><h3>${T(PARTS[2].title)}</h3></div>${explainerHtml()}${chapterHero(3,T(CH_TAG[3]))}${ALLOW_SKIP_WARMUPS&&G.carry.skipped?`<div class="card note fade"><p>${T(C3_SKIP_LINE)}</p></div>`:''}<div class="bgrid fade">${BRIEF_ITEMS.clock()}</div>`+navRow(nextLbl(G.phase+1));
+VIEWS.c3brief=()=>`<div class="card mission fade parthead"><p class="eyebrow">${T('Part {n}',{n:2})}</p><h3>${T(PARTS[2].title)}</h3></div>${chapterHero(3,T(CH_TAG[3]))}${G.carry.path==='direct'?`<div class="card note fade"><p>${T(C3_SKIP_LINE)}</p></div>`:''}<div class="bgrid fade">${BRIEF_ITEMS.clock()}</div>`+navRow(nextLbl(G.phase+1));
 const C3_COOK_END=()=>P('COOK_START_MIN')+P('COOK_DURATION_MIN');  // cooking starts 02:00 and ends 06:00
 function c3Plan(){const p=G.wu.plan,vp=P('VEHICLE_PORTIONS'),cap=P('CAP_STD'),ro=viewing(),o=morningOps(p);
   const rows=o.runs.map(r=>`<tr><td><b>${T('Run {n}',{n:r.i+1})}</b></td><td data-l="${esc(T('Children'))}">${num(r.portions)}</td><td data-l="${esc(T('Minutes from cooking to eating'))}">${P('COOL_MIN')} + ${P('PACK_MIN')} + ${Math.round(r.leg)} + ${r.i} × ${Math.round(2*r.leg)} = <b class="${r.overLimit?'bad':''}">${Math.round(r.hold)}</b>${r.overLimit?` <span class="warn">${T('past the 4-hour limit')}</span>`:''}</td>
@@ -2792,7 +2872,8 @@ const A={
   /* Gate: replay the basics from Practice 1. Minutes keep accumulating; the first attempt is kept in basicsFirstMin. */
   replayBasics(){if(viewing()||G.chapter!==2)return;G.carry.basicsFirstMin=basicsFirstMin();G.carry.basicsReplays=(G.carry.basicsReplays||0)+1;
     const now=Date.now();for(const n of[1,2]){const t=G.chTimes[n];if(t&&t.start){t.acc=(t.acc||0)+((t.end||now)-t.start);t.start=null;t.end=null;}}startChapter(1);},
-  skipWarmups(){if(!ALLOW_SKIP_WARMUPS||G.chapter>=3)return;G.carry.skipped=true;startChapter(3);},
+  /* Choice page: the basics start at Practice 1; the direct path starts at Stage 1 and Part 1 never opens. */
+  choosePath(p){if(viewing()||G.chapter!==0)return;G.carry.path=p;startChapter(p==='direct'?3:1);},
   downloadLog(){const log={decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(log,null,2)],{type:'application/json'}));a.download='mbg-run-'+seedHex('final')+'.json';a.click();},
 };
@@ -2951,12 +3032,12 @@ const FEEDBACK_ENDPOINT='';
 const FB={rating:0,text:'',sent:false,status:''};
 const FB_SCALE=[['😞','Not at all'],['🙁','Not much'],['😐','It was OK'],['🙂','Quite a lot'],['😄','Loved it']];
 function fbRecord(){const L=G.results.length?finalLedger():null;
-  return{rating:FB.rating,ratingLabel:FB.rating?FB_SCALE[FB.rating-1][1]:'',feedback:FB.text.trim(),lang:LANG,chapter:G.chapter,part:partOf(G.chapter),chapterMinutes:chapterMinutes(),basicsReplays:G.carry.basicsReplays||0,basicsFirstMin:basicsFirstMin(),skippedWarmups:!!G.carry.skipped,
+  return{rating:FB.rating,ratingLabel:FB.rating?FB_SCALE[FB.rating-1][1]:'',feedback:FB.text.trim(),lang:LANG,chapter:G.chapter,part:partOf(G.chapter),path:G.carry.path||null,chapterMinutes:chapterMinutes(),basicsReplays:G.carry.basicsReplays||0,basicsFirstMin:basicsFirstMin(),
     submittedAt:new Date().toISOString(),seed:G.results.length?seedHex('final'):null,
     scores:L?{delivered:L.delivered,exposure:L.exposure,cost:L.cost}:null};}
-/* Minutes spent in each chapter (wall clock, thinking time included); the current chapter counts up to now. */
-/* Minutes spent in each chapter, accumulated across attempts (acc = closed attempts, start/end = the open one). */
-function chapterMinutes(){return Object.fromEntries(Object.entries(G.chTimes||{}).map(([n,t])=>[n,+(((t.acc||0)+(t.start?(t.end||Date.now())-t.start:0))/60000).toFixed(1)]));}
+/* Minutes spent in each chapter, accumulated across attempts (acc = closed attempts, start/end = the open one); the
+   current chapter counts up to now. A chapter never opened (Part 1 on the direct path) is null, not 0. */
+function chapterMinutes(){const C=G.chTimes||{};return Object.fromEntries(CHAPTER_IDS.map(n=>{const t=C[n];return[n,t?+(((t.acc||0)+(t.start?(t.end||Date.now())-t.start:0))/60000).toFixed(1):null];}));}
 /* First-attempt minutes for Practice 1–2: frozen at the first replay, otherwise the only attempt so far. */
 function basicsFirstMin(){if(G.carry.basicsFirstMin)return G.carry.basicsFirstMin;const m=chapterMinutes();return{1:m[1]??null,2:m[2]??null};}
 function feedbackBox(){
@@ -2983,7 +3064,7 @@ Object.assign(A,{
 function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
 /* Feedback goes into the run log too, and is cleared when a new game starts. */
 (function(){const rs=A.restart;
-  A.downloadLog=function(){const log={chapter:G.chapter,part:partOf(G.chapter),chapterMinutes:chapterMinutes(),basicsReplays:G.carry.basicsReplays||0,basicsFirstMin:basicsFirstMin(),decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
+  A.downloadLog=function(){const log={chapter:G.chapter,part:partOf(G.chapter),path:G.carry.path||null,chapterMinutes:chapterMinutes(),basicsReplays:G.carry.basicsReplays||0,basicsFirstMin:basicsFirstMin(),decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
     if(FB.sent)log.feedback=fbRecord();
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(log,null,2)],{type:'application/json'}));a.download='mbg-run-'+seedHex('final')+'.json';a.click();};
   A.restart=function(force){const before=G;rs.apply(this,arguments);if(G!==before||G.phase===0)Object.assign(FB,{rating:0,text:'',sent:false,status:''});};
@@ -2992,6 +3073,37 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"{a}–{b} trucks":{id:"{a}–{b} truk"},
+"More trucks: more groups go in run 1.":{id:"Lebih banyak truk: lebih banyak kelompok di putaran 1."},
+"{n} cafés":{id:"{n} kafe"},
+"Bakery → trucks → café groups, and freshness over time":{id:"Toko roti → truk → kelompok kafe, dan kesegaran dari waktu ke waktu"},
+"how many trucks, which cafés go last, and croissant or sourdough for each group.":{id:"berapa truk, kafe mana yang terakhir, dan croissant atau sourdough untuk tiap kelompok."},
+"value delivered, after freshness loss and truck hire.":{id:"nilai yang tersalurkan, setelah dikurangi kesegaran yang hilang dan sewa truk."},
+"You decide:":{id:"Kamu memutuskan:"},
+"You're scored on:":{id:"Kamu dinilai dari:"},
+"Stock":{id:"Stok"},
+"Store shelf":{id:"Rak toko"},
+"{n}-day shelf life":{id:"Tahan {n} hari"},
+"{n}-day lead time":{id:"Waktu tunggu {n} hari"},
+"expired → waste":{id:"kedaluwarsa → terbuang"},
+"Supplier → truck → store shelf → shoppers":{id:"Pemasok → truk → rak toko → pembeli"},
+"Supplier":{id:"Pemasok"},
+"Shoppers":{id:"Pembeli"},
+"how much to order and how much extra to keep, for each product.":{id:"berapa banyak memesan dan berapa stok tambahan yang disimpan, untuk tiap produk."},
+"stockouts and waste.":{id:"kehabisan stok dan barang terbuang."},
+"Introduction":{id:"Pengantar"},
+"Intro":{id:"Pengantar"},
+"Choose your path":{id:"Pilih jalurmu"},
+"skipped":{id:"dilewati"},
+"Ready for the MBG Project?":{id:"Siap untuk Proyek MBG?"},
+"Continue to the MBG Project":{id:"Lanjut ke Proyek MBG"},
+"about {n} min":{id:"sekitar {n} menit"},
+"Learn supply chain basics first":{id:"Pelajari dasar rantai pasok dulu"},
+"Practice 1: The Grocery Store, then Practice 2: The Bakery. Then the MBG Project.":{id:"Latihan 1: Toko Kelontong, lalu Latihan 2: Toko Roti. Setelah itu Proyek MBG."},
+"Start with the basics":{id:"Mulai dari dasar-dasarnya"},
+"Go straight to the MBG Project":{id:"Langsung ke Proyek MBG"},
+"Start at Stage 1. For players already comfortable with supply chain concepts.":{id:"Mulai dari Tahap 1. Untuk pemain yang sudah terbiasa dengan konsep rantai pasok."},
+"Start the MBG Project":{id:"Mulai Proyek MBG"},
 "Ready check":{id:"Cek kesiapan"},
 "What you just practised":{id:"Yang baru Anda latih"},
 "A buffer absorbs uncertainty, but a perishable buffer spoils.":{id:"Stok penyangga menyerap ketidakpastian, tetapi penyangga yang mudah basi akan rusak."},
@@ -2999,9 +3111,7 @@ const I18N={
 "Route choice can substitute for more trucks.":{id:"Pilihan rute bisa menggantikan tambahan truk."},
 "What's next":{id:"Selanjutnya"},
 "You will now run part of Indonesia's free school meals programme, {mbg}. The same physics apply, but the product is cooked food for children, and it cannot be held.":{id:"Sekarang Anda akan menjalankan sebagian program makan sekolah gratis Indonesia, {mbg}. Hukum fisikanya sama, tetapi produknya makanan matang untuk anak-anak, dan tidak bisa disimpan."},
-"Ready for a bigger project?":{id:"Siap untuk proyek yang lebih besar?"},
 "Replay the basics":{id:"Ulangi dasar-dasarnya"},
-"I'm ready — start the MBG Project":{id:"Saya siap — mulai Proyek MBG"},
 "Supply Chain Basics":{id:"Dasar Rantai Pasok"},
 "The MBG Project":{id:"Proyek MBG"},
 "Practice {i}":{id:"Latihan {i}"},
@@ -3010,7 +3120,6 @@ const I18N={
 "Stage {i} of {m}":{id:"Tahap {i} dari {m}"},
 "Part {n}":{id:"Bagian {n}"},
 "Progress":{id:"Kemajuan"},
-"Skip the basics →":{id:"Lewati dasar-dasarnya →"},
 "One Kitchen, One Morning":{id:"Satu Dapur, Satu Pagi"},
 "One Region":{id:"Satu Wilayah"},
 "Two Years":{id:"Dua Tahun"},
@@ -4176,10 +4285,14 @@ function devStatus(){
 }
 function devPanel(){
   const rows=Object.entries(Object.assign({},PARAMS,WARMUP)).map(([id,p])=>`<tr><td><code>${id}</code></td><td>${p.v}</td><td>${p.unit}</td><td><span class="tag ${p.src[0]}">${p.src}</span></td><td>${esc(p.note)}</td></tr>`).join('');
-  return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<div class="row"><label>Jump to chapter <select onchange="A.devJump(this.value)">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n} · ${PARTS[partOf(n)].title} · ${partOf(n)===1?'Practice':'Stage'} ${inPart(n)}: ${CHAPTER_PAGES[n].title}</option>`).join('')}<option value="gate" ${G.chapter===2&&PHASES[G.phase]&&PHASES[G.phase][0]==='gate'?'selected':''}>Gate · Ready for a bigger project? (after Practice 2)</option></select></label><button onclick="A.devRun()">Autoplay Chapter 5 trap scenarios</button><label>Autoplay chapter <select id="devch">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n}</option>`).join('')}</select></label><button onclick="A.devChapter(+document.getElementById('devch').value)">Run</button></div><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
+  return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<div class="row"><label>Jump to chapter <select onchange="A.devJump(this.value)"><option value="intro" ${G.chapter===0&&G.phase===0?'selected':''}>Intro · What is MBG?</option><option value="choice" ${G.chapter===0&&G.phase===1?'selected':''}>Choice · basics or the MBG Project</option>${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n} · ${PARTS[partOf(n)].title} · ${partOf(n)===1?'Practice':'Stage'} ${inPart(n)}: ${CHAPTER_PAGES[n].title}</option>`).join('')}<option value="gate" ${G.chapter===2&&PHASES[G.phase]&&PHASES[G.phase][0]==='gate'?'selected':''}>Gate · Ready for the MBG Project? (after Practice 2)</option><option value="direct">3 · Stage 1 on the direct path (basics skipped)</option></select></label><button onclick="A.devRun()">Autoplay Chapter 5 trap scenarios</button><label>Autoplay chapter <select id="devch">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n}</option>`).join('')}</select></label><button onclick="A.devChapter(+document.getElementById('devch').value)">Run</button></div><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
 }
 A.devRun=()=>{const ch=G.chapter,r=runScenarios();G.chapter=ch;resetGame();render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
-A.devJump=v=>{if(v==='gate'){startChapter(2);G.phase=PHASES.findIndex(p=>p[0]==='gate');render();}else startChapter(+v);};
+/* Jumps set the path a player would have taken to get there: 1, 2 and the gate are the basics; 3–5 keep the current
+   path (basics if none was chosen); "direct" is Stage 1 with Part 1 skipped. Intro and choice clear the path. */
+A.devJump=v=>{const c=G.carry;if(v==='intro'||v==='choice'){c.path=null;startChapter(0);G.phase=v==='choice'?1:0;render();return;}
+  c.path=v==='direct'?'direct':(+v<=2||v==='gate'||!c.path)?'basics':c.path;
+  if(v==='gate'){startChapter(2);G.phase=PHASES.findIndex(p=>p[0]==='gate');render();}else startChapter(v==='direct'?3:+v);};
 A.devChapter=n=>{const ch=G.chapter,r=autoplayChapter(n);if(n>=4)startChapter(ch);else render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
 if(typeof window!=='undefined')window.MBG={get G(){return G;},PARAMS,WARMUP,SCENARIOS,autoplay,runScenarios,startChapter,autoplayChapter};
 if(typeof document!=='undefined')render();
