@@ -36,6 +36,12 @@ The Ch3 food-cost ceiling is a modelling decision, not a sourced rule: the sourc
 ### ALLOW_SKIP_WARMUPS
 `ALLOW_SKIP_WARMUPS` (Section 1) defaults to `false`. When `true`, Ch1–2 show a "Skip to Chapter 3 →" button (`A.skipWarmups()`), which sets `G.carry.skipped`. Ch3's brief then adds the safety-stock line (`C3_SKIP_LINE`, translated).
 
+## Local development
+- `npm install` once (browser-sync is the only dependency, a devDependency).
+- `npm run dev` serves the project root at http://localhost:3000/ with live reload on *.html, *.css, *.js and *.md. `npm run dev:panel` does the same and opens /?dev=1.
+- No npm: `python3 -m http.server 8000`, then open http://localhost:8000.
+- Deployment stays a plain static index.html on Vercel: do not add a build or start script, Vite or a framework.
+
 ## Rules
 - Make surgical edits. Never rewrite the whole file.
 - Any new player-facing string must be added to I18N with id and es translations.
