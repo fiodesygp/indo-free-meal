@@ -1,0 +1,11 @@
+{
+  "name": "indo-free-meal",
+  "private": true,
+  "scripts": {
+    "dev": "browser-sync start --server --files \"*.html\" \"*.css\" \"*.js\" \"*.md\" --start-path \"/\"",
+    "dev:panel": "browser-sync start --server --files \"*.html\" \"*.css\" \"*.js\" \"*.md\" --start-path \"/?dev=1\""
+  },
+  "devDependencies": {
+    "browser-sync": "^3.0.4"
+  }
+}
