@@ -681,6 +681,15 @@ body{padding-left:0}
 @media(max-width:640px){body.atgate #hdr .ledger,body.atgate #hdr .lednote{display:none}.gate .bridgegrid{gap:var(--sp-2)}.gate .gateq{font:var(--t-title-s);margin:var(--sp-4) 0 var(--sp-2)}}
 #nav .navchip.skipped{color:var(--mute);opacity:.7}#nav .navchip.skipped b{background:none;border:1.5px dashed var(--mute);color:var(--mute)}#nav .navchip small{font:var(--t-caption)}
 .choice .card{display:flex;flex-direction:column;margin:0}.choice .card p:last-of-type{flex:1}.choice .card button{align-self:flex-start;margin-top:var(--sp-3)}
+/* Choice page: the MBG Project card leads (tint, 2px primary border, soft glow that breathes three times); the basics
+   card stays plain with the page's only outlined button. */
+.choice .card.basics{border:1px solid var(--line)}
+.choice .card.primary{background:var(--green-soft);border:2px solid var(--green-ink);box-shadow:0 0 12px color-mix(in srgb,var(--green-brand) 30%,transparent);animation:choiceglow 2.5s var(--ease) 3}
+@keyframes choiceglow{50%{box-shadow:0 0 18px color-mix(in srgb,var(--green-brand) 50%,transparent)}}
+.choice .card.primary button{font:var(--t-title-s);font-family:var(--font-display);padding:var(--sp-3) var(--sp-5)}
+.choice .card .ghost{padding:9px 15px}
+.choice .badge{align-self:flex-start;font:var(--t-caption);font-weight:var(--w-demi);color:var(--panel);background:var(--green-ink);border-radius:var(--r-pill);padding:var(--sp-1) var(--sp-3);margin:0 0 var(--sp-2)}
+@media (prefers-reduced-motion:reduce){.choice .card.primary{animation:none}}
 /* Brief diagrams: the wide layout on desktop, the narrow one on phones. */
 .dg svg{display:block;width:100%;height:auto;max-width:760px;margin:0 auto}.dg .dg-n{display:none}@media(max-width:640px){.dg .dg-w{display:none}.dg .dg-n{display:block}}
 .dg-lab{font:var(--t-caption);fill:var(--ink)}.dg-lab.m{fill:var(--mute)}.dg-lab.b{font-weight:var(--w-demi)}.dg-lab.cost{fill:var(--cost);font-weight:var(--w-demi)}
@@ -2110,8 +2119,8 @@ VIEWS.bridge=()=>{const n=G.chapter,[a,b]=BRIDGE[n];
    basics (Practice 1) or straight to the MBG Project (Stage 1). No default: each card has its own button. */
 VIEWS.intro=()=>`<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="kicker">Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</p><h2>${gameTitle()}</h2></div></div></div>${explainerHtml()}`+navRow(nextLbl(shownPhase()+1));
 VIEWS.choice=()=>`${G.carry.choiceViaBack?`<p class="lead pagelead">${T('You can switch paths until you start making decisions.')}</p>`:''}<div class="bridgegrid choice fade">
-<div class="card"><p class="eyebrow">${T(PARTS[1].title)} · ${T('about {n} min',{n:17})}</p><h3>${T('Learn supply chain basics first')}</h3><p>${T('Practice 1: The Grocery Store, then Practice 2: The Bakery. Then the MBG Project.')}</p><button class="right" onclick="A.choosePath('basics')">${T('Start with the basics')}</button></div>
-<div class="card"><p class="eyebrow">${T(PARTS[2].title)}</p><h3>${T('Go straight to the MBG Project')}</h3><p>${T('Start at Stage 1. For players already comfortable with supply chain concepts.')}</p><button class="right" onclick="A.choosePath('direct')">${T('Start the MBG Project')}</button></div></div>`+(canBack()?`<div class="row nav">${backBtn()}</div>`:'');
+<div class="card primary"><p class="badge">${T('Main project')}</p><p class="eyebrow">${T(PARTS[2].title)}</p><h3>${T('Go straight to the MBG Project')}</h3><p>${T('Start at Stage 1. For players already comfortable with supply chain concepts.')}</p><button class="right" onclick="A.choosePath('direct')">${T('Start the MBG Project')}</button></div>
+<div class="card basics"><p class="eyebrow">${T(PARTS[1].title)} · ${T('about {n} min',{n:17})}</p><h3>${T('Learn supply chain basics first')}</h3><p>${T('Practice 1: The Grocery Store, then Practice 2: The Bakery. Then the MBG Project.')}</p><button class="right ghost" onclick="A.choosePath('basics')">${T('Start with the basics')}</button></div></div>`+(canBack()?`<div class="row nav">${backBtn()}</div>`:'');
 /* The gate between the parts: replaces Practice 2's bridge card. One screen: what was practised, what comes next,
    and a choice to go on or replay the basics. No quiz, no scoring. */
 const GATE_TAKEAWAYS=['A buffer absorbs uncertainty, but a perishable buffer spoils.','Run position sets product age.','Route choice can substitute for more trucks.'];
@@ -3115,6 +3124,7 @@ const I18N={
 "Learn supply chain basics first":{id:"Pelajari dasar rantai pasok dulu"},
 "Practice 1: The Grocery Store, then Practice 2: The Bakery. Then the MBG Project.":{id:"Latihan 1: Toko Kelontong, lalu Latihan 2: Toko Roti. Setelah itu Proyek MBG."},
 "Start with the basics":{id:"Mulai dari dasar-dasarnya"},
+"Main project":{id:"Proyek utama"},
 "Go straight to the MBG Project":{id:"Langsung ke Proyek MBG"},
 "Start at Stage 1. For players already comfortable with supply chain concepts.":{id:"Mulai dari Tahap 1. Untuk pemain yang sudah terbiasa dengan konsep rantai pasok."},
 "Start the MBG Project":{id:"Mulai Proyek MBG"},
