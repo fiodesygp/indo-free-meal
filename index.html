@@ -1773,15 +1773,15 @@ function renderHeader(){
    Freshness lost, Ch3 Delivered and Exposure (food safety only). Values come from the chapter's last result, G.wu.led. */
 function ledgerWarmup(){
   const n=G.chapter,L=G.wu&&G.wu.led,v=(x,f)=>L&&x!=null?f(x):'·';
-  if(n===1)return{note:L?T('Ledger after the round'):T('Ledger fills in after the round'),pairs:[{cls:'exposure',label:T('Stockouts · Waste'),info:'c1policy',
+  if(n===1)return{note:L?T('Ledger after the round'):T('Ledger fills in after the round'),pairs:[{cls:'exposure',label:T('Stockouts · Waste'),info:null,  // Chapters 1–2 carry no concept text
     dims:[[T('Stockouts'),v(L&&L.stockouts,num),T('units')],[T('Waste'),v(L&&L.waste,num),T('units')]]}]};
-  if(n===2)return{note:L?T('Ledger after Round {n}',{n:L.round}):T('Ledger fills in after Round 1'),pairs:[{cls:'delivered',label:T('Delivered · Freshness lost'),info:'c2fresh',
+  if(n===2)return{note:L?T('Ledger after Round {n}',{n:L.round}):T('Ledger fills in after Round 1'),pairs:[{cls:'delivered',label:T('Delivered · Freshness lost'),info:null,
     dims:[[T('Delivered'),v(L&&L.delivered,x=>pct(x)),T('net of truck hire')],[T('Freshness lost'),v(L&&L.lost,x=>pct(x)),T('of order value')]]}]};
   return{note:L?T('Ledger after the morning'):T('Ledger fills in after the morning'),pairs:[
     {cls:'delivered',label:T(PAIRS.delivered.label),info:'uptake',score:L&&L.delivered,dims:[[T(DIMS.reach),v(L&&L.reach,sc),'/100'],[T(DIMS.nutrition),v(L&&L.nutrition,sc),'/100']]},
     {cls:'exposure',label:T(PAIRS.exposure.label),info:'decay',score:L&&L.safety,dims:[[T(DIMS.safety),v(L&&L.safety,sc),'/100']],note:T('food safety only in this chapter')}]};
 }
-function wuPair(p){return`<div class="pair ${p.cls}"><div class="t"><span>${p.label} ${info(p.info)}</span>${p.score!=null?`<span class="pscore"><b>${sc(p.score)}</b><small>/ 100</small></span>`:''}</div><div class="dims">${p.dims.map(([l,x,u])=>`<span>${l}<br><b>${x}</b>${u&&x!=='·'?`<small>${u}</small>`:''}</span>`).join('')}</div>${p.note?`<p class="pnote">${p.note}</p>`:''}</div>`;
+function wuPair(p){return`<div class="pair ${p.cls}"><div class="t"><span>${p.label}${p.info?' '+info(p.info):''}</span>${p.score!=null?`<span class="pscore"><b>${sc(p.score)}</b><small>/ 100</small></span>`:''}</div><div class="dims">${p.dims.map(([l,x,u])=>`<span>${l}<br><b>${x}</b>${u&&x!=='·'?`<small>${u}</small>`:''}</span>`).join('')}</div>${p.note?`<p class="pnote">${p.note}</p>`:''}</div>`;
 }
 
 const VIEWS={};
