@@ -688,6 +688,7 @@ body{padding-left:0}
 .dg-stock{fill:var(--green-soft-2)}.dg-safe{fill:var(--green-soft);stroke:var(--green-ink);stroke-width:1.2;stroke-dasharray:4 3}.dg-plank{fill:var(--mute)}
 .dg-tag{fill:var(--panel);stroke:var(--cost);stroke-width:1.2}.dg-waste{fill:var(--cost)}.dg-cut{stroke:var(--panel);stroke-width:1.5}
 .dg-flow{stroke:var(--mute);stroke-width:2}.dg-head{fill:var(--mute)}.dg-dash{fill:none;stroke:var(--cost);stroke-width:1.5;stroke-dasharray:4 3}
+.dg-awn{fill:var(--green-ink)}.dg-opt{opacity:.45}.dg-run{stroke:var(--mute);stroke-width:1.2;stroke-dasharray:3 3}
 .dg-say{margin:var(--sp-4) 0 0;font:var(--t-body-s)}
 #nav .navdiv.on{background:var(--green-ink);width:4px;box-shadow:0 0 0 3px var(--green-soft)}
 .bridgegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:640px){.bridgegrid{grid-template-columns:1fr}}
@@ -2037,6 +2038,8 @@ const DG_ICON={  // centred on (0,0)
   warehouse:'<path class="dg-obj" d="M-22 -2L0 -16 22 -2V16H-22z"/><rect class="dg-dark" x="-7" y="3" width="14" height="13"/>',
   truck:'<rect class="dg-obj" x="-24" y="-13" width="31" height="19" rx="2"/><path class="dg-obj" d="M7 -7h9l6 7v6H7z"/><circle class="dg-ink" cx="-14" cy="8" r="4"/><circle class="dg-ink" cx="13" cy="8" r="4"/>',
   shopper:'<circle class="dg-dark" cy="-13" r="5.5"/><path class="dg-dark" d="M-9 12v-7a9 9 0 0 1 18 0v7z"/>',
+  bakery:'<rect class="dg-obj" x="9" y="-22" width="7" height="12"/><path class="dg-obj" d="M-22 -2L0 -16 22 -2V16H-22z"/><path class="dg-dark" d="M-8 16v-7a8 8 0 0 1 16 0v7z"/>',
+  cafe:'<rect class="dg-obj" x="-6" y="-3" width="12" height="10"/><rect class="dg-awn" x="-8" y="-9" width="16" height="6" rx="1"/>',
   bin:'<rect class="dg-waste" x="-12" y="-14" width="24" height="4" rx="1"/><path class="dg-waste" d="M-10 -8h20l-2.5 22h-15z"/><path class="dg-cut" d="M-4 -4v14M4 -4v14"/>',
 };
 const dgIcon=(k,x,y)=>`<g transform="translate(${x} ${y})">${DG_ICON[k]}</g>`;
@@ -2059,7 +2062,33 @@ ${sh.svg}<path class="dg-dash" d="M${sh.out[0]} ${sh.out[1]}Q270 240 290 262"/>$
 ${dgArrow(40,298,40,344)}${dgIcon('shopper',32,372)}${dgIcon('shopper',54,372)}${dgLab(80,376,T('Shoppers'),'b','start')}</svg>`;})();
   return`<div class="card dg fade">${w}${n}${dgSay('how much to order and how much extra to keep, for each product.','stockouts and waste.')}</div>`;}
 VIEWS.c1brief=()=>chapterHero(1,T(CH_TAG[1]))+groceryDiagram()+navRow(nextLbl(G.phase+1));
-VIEWS.c2brief=()=>chapterHero(2,T(CH_TAG[2]))+navRow(nextLbl(G.phase+1));
+/* The bakery: the trucks fan out to the three café groups, one run per group with a single truck (more trucks bring
+   groups forward into run 1). Below, the freshness curves (compS, the same as meal safety) with the delivery time of
+   each run, from bakeryAge(). */
+function bakeryDiagram(){
+  const ids=Object.keys(CAFE_GROUPS).filter(k=>k!=='N'),nT=B_TRUCK_OPTIONS.length,ages=ids.map((_,k)=>bakeryAge(k+1)),TMAX=240;
+  const trucks=T('{a}–{b} trucks',{a:Math.min(...B_TRUCK_OPTIONS),b:Math.max(...B_TRUCK_OPTIONS)}),more=T('More trucks: more groups go in run 1.'),per=T('{n} cafés',{n:W('B_CAFES_PER_TRUCK')});
+  const cafes=(x,y)=>Array.from({length:W('B_CAFES_PER_TRUCK')},(_,k)=>dgIcon('cafe',x+k*18,y)).join('');
+  const chart=(L,R,top,bot)=>{const sx=(R-L)/TMAX,X=t=>L+t*sx,Y=v=>bot-v*(bot-top),line=c=>{let d='';for(let t=0;t<=TMAX;t+=5)d+=(t?'L':'M')+X(t).toFixed(1)+' '+Y(compS(c,t)).toFixed(1);return d;};
+    let s=`${dgLab(4,top-12,T('Freshness'),'b','start')}<line class="wu-axis" x1="${L}" x2="${R}" y1="${bot}" y2="${bot}"/>`;
+    for(let t=0;t<=TMAX;t+=60)s+=`<line class="wu-grid" x1="${X(t)}" x2="${X(t)}" y1="${top}" y2="${bot}"/>${dgLab(X(t),bot+16,t,'m')}`;
+    for(const v of[0,0.5,1])s+=dgLab(L-6,Y(v)+4,pct(v),'m','end');
+    s+=`<path class="wu-cro" d="${line(CROISSANT())}"/><path class="wu-sou" d="${line(SOURDOUGH())}"/>`;
+    ages.forEach((t,k)=>{s+=`<line class="dg-run" x1="${X(t)}" x2="${X(t)}" y1="${top-4}" y2="${bot}"/><circle class="wu-dot cro" cx="${X(t)}" cy="${Y(compS(CROISSANT(),t))}" r="4"/><circle class="wu-dot sou" cx="${X(t)}" cy="${Y(compS(SOURDOUGH(),t))}" r="4"/>${dgLab(X(t),top-12,T('run {n}',{n:k+1}),'b')}`;});
+    return s+dgLab(R,bot+34,T('minutes after baking'),'m','end');};
+  const w=`<svg class="dg-w" viewBox="0 0 640 400" role="img" aria-label="${esc(T('Bakery → trucks → café groups, and freshness over time'))}">
+${dgIcon('bakery',48,88)}${dgLab(48,128,T('Bakery'),'b')}${dgArrow(80,92,116,92)}
+${Array.from({length:nT},(_,k)=>`<g class="${k?'dg-opt':''}">${dgIcon('truck',148,60+k*34)}</g>`).join('')}${dgLab(148,60+nT*34+4,trucks,'m')}
+${ids.map((id,k)=>{const gy=36+k*58,x2=372,ly=92+(gy-92)*0.55;return dgArrow(184,92,x2,gy)+dgLab(282,ly-7,T('run {n}',{n:k+1}),'b')+cafes(394,gy)+dgLab(480,gy+4,grpName(id),'b','start')+dgLab(480,gy+20,per,'m','start');}).join('')}
+${dgLab(282,198,more,'m')}${chart(84,620,244,350)}</svg>`;
+  const n=`<svg class="dg-n" viewBox="0 0 330 590" role="img" aria-label="${esc(T('Bakery → trucks → café groups, and freshness over time'))}">
+${dgIcon('bakery',40,34)}${dgLab(74,39,T('Bakery'),'b','start')}${dgArrow(40,56,40,92)}
+${Array.from({length:nT},(_,k)=>`<g class="${k?'dg-opt':''}">${dgIcon('truck',40+k*56,112)}</g>`).join('')}${dgLab(40+nT*56-18,117,trucks,'m','start')}
+<line class="dg-flow" x1="40" y1="128" x2="40" y2="${172+(ids.length-1)*56}"/>
+${ids.map((id,k)=>{const gy=172+k*56;return dgArrow(40,gy,112,gy)+dgLab(76,gy-7,T('run {n}',{n:k+1}),'b')+cafes(128,gy)+dgLab(118,gy+24,grpName(id)+' · '+per,'b','start');}).join('')}
+${dgLab(10,348,more,'m','start')}${chart(48,314,414,530)}</svg>`;
+  return`<div class="card dg fade">${w}${n}<div class="legend"><span><i class="lg wu-cro"></i>${T('Croissant')}</span><span><i class="lg wu-sou"></i>${T('Sourdough')}</span></div>${dgSay('how many trucks, which cafés go last, and croissant or sourdough for each group.','value delivered, after freshness loss and truck hire.')}</div>`;}
+VIEWS.c2brief=()=>chapterHero(2,T(CH_TAG[2]))+bakeryDiagram()+navRow(nextLbl(G.phase+1));
 /* Pages a chapter has not built yet show only their name (removed as each chapter lands). */
 const pendingPage=()=>card(`<h2>${pageName(G.phase)}</h2>`)+navRow(nextLbl(G.phase+1));
 ['c1policy','c1run','c2round','c3plan','c3run'].forEach(k=>{if(!VIEWS[k])VIEWS[k]=pendingPage;});
@@ -3044,6 +3073,12 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"{a}–{b} trucks":{id:"{a}–{b} truk"},
+"More trucks: more groups go in run 1.":{id:"Lebih banyak truk: lebih banyak kelompok di putaran 1."},
+"{n} cafés":{id:"{n} kafe"},
+"Bakery → trucks → café groups, and freshness over time":{id:"Toko roti → truk → kelompok kafe, dan kesegaran dari waktu ke waktu"},
+"how many trucks, which cafés go last, and croissant or sourdough for each group.":{id:"berapa truk, kafe mana yang terakhir, dan croissant atau sourdough untuk tiap kelompok."},
+"value delivered, after freshness loss and truck hire.":{id:"nilai yang tersalurkan, setelah dikurangi kesegaran yang hilang dan sewa truk."},
 "You decide:":{id:"Kamu memutuskan:"},
 "You're scored on:":{id:"Kamu dinilai dari:"},
 "Stock":{id:"Stok"},
@@ -4250,7 +4285,7 @@ function devStatus(){
 }
 function devPanel(){
   const rows=Object.entries(Object.assign({},PARAMS,WARMUP)).map(([id,p])=>`<tr><td><code>${id}</code></td><td>${p.v}</td><td>${p.unit}</td><td><span class="tag ${p.src[0]}">${p.src}</span></td><td>${esc(p.note)}</td></tr>`).join('');
-  return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<div class="row"><label>Jump to chapter <select style="max-width:100%" onchange="A.devJump(this.value)"><option value="intro" ${G.chapter===0&&G.phase===0?'selected':''}>Intro · What is MBG?</option><option value="choice" ${G.chapter===0&&G.phase===1?'selected':''}>Choice · basics or the MBG Project</option>${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n} · ${PARTS[partOf(n)].title} · ${partOf(n)===1?'Practice':'Stage'} ${inPart(n)}: ${CHAPTER_PAGES[n].title}</option>`).join('')}<option value="gate" ${G.chapter===2&&PHASES[G.phase]&&PHASES[G.phase][0]==='gate'?'selected':''}>Gate · Ready for the MBG Project? (after Practice 2)</option><option value="direct">3 · Stage 1 on the direct path (basics skipped)</option></select></label><button onclick="A.devRun()">Autoplay Chapter 5 trap scenarios</button><label>Autoplay chapter <select id="devch">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n}</option>`).join('')}</select></label><button onclick="A.devChapter(+document.getElementById('devch').value)">Run</button></div><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
+  return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<div class="row"><label>Jump to chapter <select onchange="A.devJump(this.value)"><option value="intro" ${G.chapter===0&&G.phase===0?'selected':''}>Intro · What is MBG?</option><option value="choice" ${G.chapter===0&&G.phase===1?'selected':''}>Choice · basics or the MBG Project</option>${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n} · ${PARTS[partOf(n)].title} · ${partOf(n)===1?'Practice':'Stage'} ${inPart(n)}: ${CHAPTER_PAGES[n].title}</option>`).join('')}<option value="gate" ${G.chapter===2&&PHASES[G.phase]&&PHASES[G.phase][0]==='gate'?'selected':''}>Gate · Ready for the MBG Project? (after Practice 2)</option><option value="direct">3 · Stage 1 on the direct path (basics skipped)</option></select></label><button onclick="A.devRun()">Autoplay Chapter 5 trap scenarios</button><label>Autoplay chapter <select id="devch">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n}</option>`).join('')}</select></label><button onclick="A.devChapter(+document.getElementById('devch').value)">Run</button></div><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
 }
 A.devRun=()=>{const ch=G.chapter,r=runScenarios();G.chapter=ch;resetGame();render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
 /* Jumps set the path a player would have taken to get there: 1, 2 and the gate are the basics; 3–5 keep the current

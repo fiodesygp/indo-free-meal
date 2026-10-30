@@ -27,6 +27,7 @@ Five chapters, played in order, shown to players in two parts (internally they s
 - **One curve:** Ch2 "Freshness" and Ch3–5 "Safety" are the same `compS()` (S = 1 until λ, then 0.5^((t − λ)/h)). Never write a second implementation.
 - **Warm-up parameters:** `WARMUP` (Section 1), all `src:'estimate'`, read with `W(id)`. Chapter engines: `groceryRound()` (Ch1), `bakeryRound()` (Ch2), `morningOps()` (Ch3, wraps `kitchenOps()` with an optional per-run menu, `plan.runMenu`).
 - **Run shell:** Ch1–3 animate through the warm-up animator (`wuShell` / `wuStart` / `WU_PAINT` / `WU_END` / `WU_LED` / `WU_EVENT`). It uses the same track, readouts, controls and overlay classes as the semester run (`simView`). Results are computed before the animation, so the animation is display only.
+- **Brief diagrams:** Practice 1–2's briefs open with an inline-SVG diagram (`groceryDiagram()`, `bakeryDiagram()`; helpers `dgLab`, `dgArrow`, `DG_ICON`, `dgSay`) in the `.dg-*` token classes: no images, emoji or libraries. Each draws a wide layout (`.dg-w`) and a top-to-bottom phone layout (`.dg-n`) with a viewBox near its rendered width, so labels stay ≥ 11 px at 390 px. Numbers come from `W()`, `B_TRUCK_OPTIONS`, `bakeryAge()` and `compS()`.
 - **Ledger:** `renderHeader()` shows no ledger on the entry, `ledgerWarmup()` tiles in Ch1–3 and the three MBG pairs in Ch4–5.
 - **Feedback:** the record and run log include `chapter` (1–5), `part` (1 or 2), `path` (`'basics'` or `'direct'`), `chapterMinutes` (keys 1–5, `null` for a chapter never opened, so Part 1 on the direct path; accumulated across attempts: `G.chTimes[n]` keeps `acc` for closed attempts and `start`/`end` for the open one), `basicsReplays` (times "Replay the basics" was used), `basicsFirstMin` (first-attempt minutes for Practice 1–2, frozen at the first replay; `null` on the direct path). `skippedWarmups` was removed; `path` replaces it.
 
@@ -34,7 +35,7 @@ Five chapters, played in order, shown to players in two parts (internally they s
 | | Practice 1 (Ch1) | Practice 2 (Ch2) | Stage 1 (Ch3) | Stage 2 (Ch4) | Stage 3 (Ch5) |
 |---|---|---|---|---|---|
 | Ledger | Stockouts · Waste | Delivered · Freshness lost | Delivered, Exposure (food safety only) | all three pairs | all three pairs |
-| Brief facts (`BRIEF_ITEMS`) | none | none | clock (the explainer is on the Intro) | unit, who is fed, background (optional) | scale, mission |
+| Brief facts (`BRIEF_ITEMS`) | none (diagram: `groceryDiagram()`) | none (diagram: `bakeryDiagram()`) | clock (the explainer is on the Intro) | unit, who is fed, background (optional) | scale, mission |
 | Decisions | order qty + safety stock per product | trucks, run order, croissant or sourdough per group | run count, meal per run | province (one), radius, size, build/rent, vehicles, sourcing, weekly menu | everything in the full game |
 | Fixed | – | – | 1 vehicle, Teluk Lumba kitchen (30-min leg) | posture "balanced", activation 1, budget split automatic, no events or weather | – |
 | Carries forward | – | – | run menus → Ch4 week | regency, kitchens, sourcing, menu → Ch5 first region | – |
