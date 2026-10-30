@@ -656,6 +656,7 @@ body{padding-left:0}
   table.stack td{border:0;padding:2px 0;text-align:left!important}table.stack td[data-l]{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2);justify-content:space-between;align-items:center}
   table.stack td[data-l]::before{content:attr(data-l);color:var(--mute);font:var(--t-caption)}
   table.stack .thumbcell{min-width:0;max-width:100%}table.stack select{min-width:0;max-width:100%;flex:1 1 auto}}
+.c3food{margin:var(--sp-3) 0}
 .wu2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:760px){.wu2{grid-template-columns:1fr}}
 .wuprod .phead{display:flex;align-items:center;gap:var(--sp-3)}.wuprod .phead h3{margin:0}
 .wufacts{margin:var(--sp-2) 0 var(--sp-3);padding-left:var(--sp-5);font:var(--t-body-s);color:var(--mute)}
@@ -1540,7 +1541,12 @@ function morningOps(plan){
     const weak=mealComps(r.menu,r.addon).filter(c=>c.lam!=null).reduce((a,c)=>compS(c,r.hold)<compS(a,r.hold)?c:a);
     nutr+=r.portions*up*score;risk+=r.portions*(1-r.S);return Object.assign({},r,{up,score,weak,risk:r.portions*(1-r.S)});});
   const reach=100*load/cap,nutrition=load?100*nutr/load:0,safety=load?100*(1-risk/load):100;
-  return{plan:clone(plan),runs,fed:load,cap,leg:ops.runs[0].leg,risk,ill:risk*P('ATTACK_RATE'),reach,nutrition,safety,delivered:(reach+nutrition)/2};
+  /* Food cost: a modelling decision, not a sourced rule. The Rp10,000 raw-material ceiling (FOOD_CEILING) is applied as
+     an average per portion across the whole morning: Σ runs (portions × meal food cost) ≤ fed × ceiling. A plan over
+     it cannot start; it is not scored. */
+  const food=sum(runs.map(r=>r.portions*mealProps(r.menu,r.addon).cost)),foodAvg=load?food/load:0;
+  return{plan:clone(plan),runs,fed:load,cap,leg:ops.runs[0].leg,risk,ill:risk*P('ATTACK_RATE'),reach,nutrition,safety,delivered:(reach+nutrition)/2,
+    food,foodAvg,overCeiling:food>load*P('FOOD_CEILING')};
 }
 
 /* ============ SECTION 3 · UI ============ */
@@ -2159,11 +2165,16 @@ VIEWS.c3brief=()=>`${explainerHtml()}${chapterHero(3,T(CH_TAG[3]))}${ALLOW_SKIP_
 const C3_COOK_END=()=>P('COOK_START_MIN')+P('COOK_DURATION_MIN');  // cooking starts 02:00 and ends 06:00
 function c3Plan(){const p=G.wu.plan,vp=P('VEHICLE_PORTIONS'),cap=P('CAP_STD'),ro=viewing(),o=morningOps(p);
   const rows=o.runs.map(r=>`<tr><td><b>${T('Run {n}',{n:r.i+1})}</b></td><td data-l="${esc(T('Children'))}">${num(r.portions)}</td><td data-l="${esc(T('Minutes from cooking to eating'))}">${P('COOL_MIN')} + ${P('PACK_MIN')} + ${Math.round(r.leg)} + ${r.i} × ${Math.round(2*r.leg)} = <b class="${r.overLimit?'bad':''}">${Math.round(r.hold)}</b>${r.overLimit?` <span class="warn">${T('past the 4-hour limit')}</span>`:''}</td>
-<td data-l="${esc(T('Meal'))}"><span class="thumbcell">${menuPhoto(r.menu,'none','sm')}<select aria-label="${esc(T('Meal on run {n}',{n:r.i+1}))}" ${ro?'disabled':''} onchange="A.wuPol('plan.runMenu.${r.i}.m',this.value)">${MENU_IDS.map(id=>`<option value="${id}" ${id===r.menu?'selected':''}>${esc(menuName(id))}</option>`).join('')}</select></span></td></tr>`).join('');
+<td data-l="${esc(T('Meal'))}"><span class="thumbcell">${menuPhoto(r.menu,'none','sm')}<select aria-label="${esc(T('Meal on run {n}',{n:r.i+1}))}" ${ro?'disabled':''} onchange="A.wuPol('plan.runMenu.${r.i}.m',this.value)">${MENU_IDS.map(id=>`<option value="${id}" ${id===r.menu?'selected':''}>${esc(menuName(id))} · Rp${num(MENUS[id].cost)}</option>`).join('')}</select></span></td></tr>`).join('');
   return`<div class="fade">`+card(`<h2>${T('Menu and runs')}</h2><p class="lead">${T('Cooking ends at {t}. One vehicle carries {v} portions a run, and each run leaves when it is back. Choose how many runs go out and which meal each one carries.',{t:hhmm(C3_COOK_END()),v:num(vp)})}</p>
 <div class="ctl"><span>${T('Runs this morning')}</span>${seg([1,2,3,4].map(x=>[x,String(x)]),p.runs,v=>ro?'':`A.c3Runs(${v})`)}<small>${T('{r} × {v} = {f} children fed, of {c}',{r:p.runs,v:num(vp),f:num(o.fed),c:num(cap)})}</small></div>
 <table class="wucalc c2plan stack"><tr><th>${T('Run')}</th><th>${T('Children')}</th><th>${T('Minutes from cooking to eating')}</th><th>${T('Meal')}</th></tr>${rows}</table>
-<p class="mute hint">${T('Held = cooling {a} + packing {b} + drive {c} + (run − 1) × round trip {d} min.',{a:P('COOL_MIN'),b:P('PACK_MIN'),c:Math.round(o.leg),d:Math.round(2*o.leg)})}</p>${c3Timeline(o,null)}`)+`</div>`+navRow('▶ '+T('Run the morning'),true,'A.c3Run()');}
+<p class="mute hint">${T('Held = cooling {a} + packing {b} + drive {c} + (run − 1) × round trip {d} min.',{a:P('COOL_MIN'),b:P('PACK_MIN'),c:Math.round(o.leg),d:Math.round(2*o.leg)})}</p>${c3FoodCost(o)}${c3Timeline(o,null)}`)+`</div>`+navRow('▶ '+T('Run the morning'),!o.overCeiling,'A.c3Run()');}
+/* Food cost readout: the morning's average ingredient cost per portion against the ceiling, with its arithmetic. */
+function c3FoodCost(o){const c=P('FOOD_CEILING'),over=o.overCeiling;
+  return`<div class="c3food ${over?'over':''}"><p class="wushelf"><b class="${over?'bad':''}">${T('Food cost: {x} avg / {c} ceiling',{x:rpFull(Math.round(o.foodAvg)),c:rpFull(c)})}</b></p>
+<p class="mute hint">(${o.runs.map(r=>`${num(r.portions)} × ${rpFull(mealProps(r.menu,r.addon).cost)}`).join(' + ')}) ÷ ${num(o.fed)} = ${rpFull(Math.round(o.foodAvg))}</p>
+${over?`<div class="note">${T('Over the ceiling: this morning\'s ingredients average {x} a portion, above the {c} raw-material ceiling. The morning cannot start until a costly meal is swapped for a cheaper one.',{x:rpFull(Math.round(o.foodAvg)),c:rpFull(c)})}</div>`:''}</div>`;}
 VIEWS.c3plan=()=>c3Plan();
 /* Timeline: cooling and packing, waiting for the vehicle, on the road; the 4-hour line; the cursor is the clock. */
 function c3Timeline(o,m){
@@ -2197,7 +2208,8 @@ function c3Results(){const o=G.wu.res;
   return`<div class="fade">`+card(`<h2>${T('The morning: results')}</h2><table class="wucalc stack"><tr><th>${T('Run')}</th><th>${T('Children')}</th><th>${T('Held (min)')}</th><th>${T('Meal')}</th><th>${T('Weakest component')}</th><th>${T('Safe share S')}</th><th>${T('Portions at risk')}</th></tr>${rows}</table>
 <p class="mute hint">${T('Portions at risk on a run = children × (1 − S). S is the same lag-then-halving curve as Freshness in Chapter 2, here labelled Safety: 1 until λ, then halving every h minutes. A meal is as safe as its weakest component.')}</p>
 ${calcTable([[T(DIMS.reach),`${num(o.fed)} ÷ ${num(o.cap)}`,sc(o.reach)],[T(DIMS.nutrition),T('Σ children × menu fit × nutrient score ÷ children fed'),sc(o.nutrition)],[T(PAIRS.delivered.label),`(${sc(o.reach)} + ${sc(o.nutrition)}) ÷ 2`,`<b>${sc(o.delivered)}</b>`,'tot'],
-[T(DIMS.safety),`100 × (1 − ${num(o.risk)} ÷ ${num(o.fed)})`,`<b>${sc(o.safety)}</b>`,'tot']])}
+[T(DIMS.safety),`100 × (1 − ${num(o.risk)} ÷ ${num(o.fed)})`,`<b>${sc(o.safety)}</b>`,'tot'],
+[T('Food cost per portion'),`${rpFull(Math.round(o.food))} ÷ ${num(o.fed)} (${T('ceiling {c}',{c:rpFull(P('FOOD_CEILING'))})})`,rpFull(Math.round(o.foodAvg))]])}
 ${o.runs.filter(r=>r.overLimit).map(r=>`<p class="wuverdict bad">${T('Run {n} broke the 4-hour rule: {c} children ate {m} minutes after cooking ended, past the {l}-minute limit.',{n:r.i+1,c:num(r.portions),m:Math.round(r.hold),l:P('HOLD_LIMIT_MIN')})}</p>`).join('')}<p class="wuverdict ${o.risk>=1?'bad':'good'}">${o.risk>=1?T('About {n} children could fall ill: {p} of the portions at risk, the simulation\'s attack rate.',{n:num(o.ill),p:pct(P('ATTACK_RATE'))}):T('Every child ate inside the safe window.')}</p>${c3Timeline(o,c3End(o))}`)+`</div>`;}
 
 /* ---------- Set-up page 1: priorities + posture ---------- */
@@ -2741,7 +2753,7 @@ const A={
   wuPol(path,v){if(viewing())return;setPath(G.wu,path,v);render();},
   c1Run(){if(viewing())return;G.wu.res=groceryRound(G.wu.pol);G.wu.base=groceryNoBuffer(G.wu.pol);wuStart(W('G_DAYS')*6000);G.phase++;render();},
   c3Runs(v){if(viewing())return;G.wu.plan.runs=v;render();},
-  c3Run(){if(viewing())return;G.wu.res=morningOps(G.wu.plan);wuStart(c3End(G.wu.res)*C3_MS_PER_MIN);G.phase++;render();},
+  c3Run(){if(viewing()||morningOps(G.wu.plan).overCeiling)return;G.wu.res=morningOps(G.wu.plan);wuStart(c3End(G.wu.res)*C3_MS_PER_MIN);G.phase++;render();},
   c2Move(id,d){if(viewing())return;const o=G.wu.plan.order,i=o.indexOf(id),j=i+d;if(j<0||j>=o.length)return;o.splice(i,1);o.splice(j,0,id);render();},
   c2Run(){if(viewing())return;const r=G.phase,res=bakeryRound(G.wu.plan,null),rd={plan:clone(G.wu.plan),res,endMin:c2End(res)};G.wu.rounds[r]=rd;
     wuStart(rd.endMin*C2_MS_PER_MIN,G.phase,r===2?W('B_LOAD_MIN')*C2_MS_PER_MIN:null);render();},
@@ -2947,6 +2959,10 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id) and Spanish (es). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"Food cost: {x} avg / {c} ceiling":{id:"Biaya bahan: rata-rata {x} / batas {c}",es:"Coste de alimentos: {x} de media / techo {c}"},
+"Over the ceiling: this morning's ingredients average {x} a portion, above the {c} raw-material ceiling. The morning cannot start until a costly meal is swapped for a cheaper one.":{id:"Melewati batas: bahan pagi ini rata-rata {x} per porsi, di atas batas bahan baku {c}. Pagi ini belum bisa dimulai sampai menu yang mahal diganti dengan yang lebih murah.",es:"Por encima del techo: los ingredientes de esta mañana cuestan de media {x} por ración, más que el techo de materias primas de {c}. La mañana no puede empezar hasta cambiar una comida cara por otra más barata."},
+"Food cost per portion":{id:"Biaya bahan per porsi",es:"Coste de alimentos por ración"},
+"ceiling {c}":{id:"batas {c}",es:"techo {c}"},
 "Past the 4-hour limit":{id:"Melewati batas 4 jam",es:"Pasado el límite de 4 horas"},
 "Run {n} broke the 4-hour rule: {c} children ate {m} minutes after cooking ended, past the {l}-minute limit.":{id:"Pengantaran {n} melanggar aturan 4 jam: {c} anak makan {m} menit setelah memasak selesai, melewati batas {l} menit.",es:"El viaje {n} incumplió la regla de las 4 horas: {c} niños comieron {m} minutos después de terminar de cocinar, pasado el límite de {l} minutos."},
 "Pilot province":{id:"Provinsi percontohan",es:"Provincia piloto"},
@@ -4184,7 +4200,7 @@ const CH_AUTOPLAY={
       runs:Object.fromEntries(Object.entries(plans).map(([k,p])=>[k,{round1:f(bakeryRound(p,null)),round2:f(bakeryRound(p,{swap:false})),round2swap:f(bakeryRound(p,{swap:true}))}]))};},
   3:()=>{const M=(...ids)=>[0,1,2,3].map(i=>({m:ids[Math.min(i,ids.length-1)],a:'none'})),plans={'3 runs, fried chicken':{runs:3,runMenu:M('M1')},'4 runs, fried chicken':{runs:4,runMenu:M('M1')},
       '3 runs, coconut gravy':{runs:3,runMenu:M('M2')},'4 runs, gravy early, dry pack last':{runs:4,runMenu:M('M2','M2','M1','M7')},'2 runs, gravy':{runs:2,runMenu:M('M2')},'1 run':{runs:1,runMenu:M('M2')}};
-    return{runs:Object.fromEntries(Object.entries(plans).map(([k,p])=>{const o=morningOps(p);return[k,{fed:o.fed,held:o.runs.map(r=>Math.round(r.hold)),S:o.runs.map(r=>+r.S.toFixed(2)),risk:Math.round(o.risk),reach:Math.round(o.reach),nutrition:Math.round(o.nutrition),safety:Math.round(o.safety),animSec:c3End(o)*C3_MS_PER_MIN/1000}];}))};},
+    return{runs:Object.fromEntries(Object.entries(plans).map(([k,p])=>{const o=morningOps(p);return[k,{fed:o.fed,held:o.runs.map(r=>Math.round(r.hold)),S:o.runs.map(r=>+r.S.toFixed(2)),risk:Math.round(o.risk),foodAvg:Math.round(o.foodAvg),overCeiling:o.overCeiling,reach:Math.round(o.reach),nutrition:Math.round(o.nutrition),safety:Math.round(o.safety),animSec:c3End(o)*C3_MS_PER_MIN/1000}];}))};},
   4:()=>{const one=(rid,ri,siting,arch)=>{G.chapter=4;resetGame();setChapter(4);Object.assign(G.dec,{regions:[rid],regency:{[rid]:ri},radius:{[rid]:6},siting:{[rid]:siting},sourcing:{arch,rails:false,receipts:false}});
       initWorld();const plan=defaultPlan(1);G.plans[0]=plan;beginYear(1,plan);const L=G.results[0].ledger,rp=regionPlan(rid);
       return{kitchens:rp.n,open:G.results[0].rows.filter(r=>r.status==='active').length,viable:rp.viable,payback:+rp.payback.toFixed(2),runs:rp.runs,events:G.results[0].events.length,incidents:G.results[0].incidents.length,
