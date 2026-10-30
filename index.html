@@ -982,6 +982,9 @@ function chapterDefaults(){
   if(n===1)G.wu={pol:{dry:{q:100,ss:20},bread:{q:100,ss:20}}};  // estimate: a round-number starting policy
   if(n===2)G.wu={plan:{trucks:2,order:['A','B','C'],swap:{A:false,B:false,C:false}},rounds:{}};  // round 2 starts from round 1's plan
   if(n===3)G.wu={plan:{runs:3,runMenu:[0,1,2,3].map(()=>({m:'M1',a:'none'}))}};  // estimate: three runs, one menu
+  if(n===5&&G.carry.ch4){const c=G.carry.ch4;  // Chapter 4's regency comes back as the first of the two
+    Object.assign(G.dec,{regions:[c.rid],regency:{[c.rid]:c.regency},radius:{[c.rid]:c.radius},siting:{[c.rid]:clone(c.siting)},menu:clone(c.menu)});
+    G.dec.sourcing.arch=c.arch;G.ui.regPicked={[c.rid]:true};}
   if(n===4){G.dec.posture='balanced';  // ramp speed is a Chapter 5 decision
     const m3=G.carry.menu3;if(m3&&m3.length)G.dec.menu=WEEK().map(d=>clone(m3[d%m3.length]));}  // Chapter 3's run menus become the week
 }
@@ -991,6 +994,7 @@ function chapterCarry(n){
   if(n===4){const rid=G.dec.regions[0];if(rid)G.carry.ch4={rid,regency:G.dec.regency[rid],radius:G.dec.radius[rid],siting:clone(G.dec.siting[rid]),arch:G.dec.sourcing.arch,menu:clone(G.dec.menu)};}
 }
 resetGame();
+G.chTimes[G.chapter]={start:Date.now()};
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -1952,15 +1956,11 @@ const BRIEF_ITEMS={
 };
 /* Chapter 4's brief: the unit, and who is fed and when (calendar and beneficiary mix); background optional. */
 function briefCh4(){return chapterHero(4,T(CH_TAG[4]))+`<div class="bgrid fade">${BRIEF_ITEMS.unit()}${BRIEF_ITEMS.who()}</div><details class="more card"><summary><b>${T('More context')}</b> <span class="mute">${T('optional · why the programme exists')}</span></summary>${briefBackground()}</details>`+navRow(nextLbl(G.phase+1));}
-VIEWS.brief=()=>G.chapter===4?briefCh4():`${explainerHtml()}<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="eyebrow">${T('Briefing · about two minutes')}</p><p class="kicker">Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</p><h2>${gameTitle()}</h2></div></div><p class="tagline">${T('Every meal has four hours to reach a child. Build the network that wins the race, for two years, on a budget.')}</p>
+/* Chapter 5's brief: the mission, and the last of the four facts (the scale). The explainer, the clock, the unit
+   and who is fed were met in Chapters 3–4. */
+VIEWS.brief=()=>G.chapter===4?briefCh4():`<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="eyebrow">${T('Chapter {n} of 5',{n:5})} · ${T('Briefing · about two minutes')}</p><p class="kicker">Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</p><h2>${gameTitle()}</h2></div></div><p class="tagline">${T('Every meal has four hours to reach a child. Build the network that wins the race, for two years, on a budget.')}</p>
 <p class="lead">${T('You are setting up the school channel of Indonesia\'s free meals programme, {mbg}, in two pilot {regencies}, for two operating years, played as four semesters. Your job is physical flow: food from a kitchen to a child before it can harm them, under a budget and a clock.',{mbg:g('MBG',T('Makan Bergizi Gratis (Free Nutritious Meals)')),regencies:g('kabupaten',T('regencies'))})}</p></div>
-${missionCard()}<details class="more card"><summary><b>${T('More context')}</b> <span class="mute">${T('optional · background, and four facts the simulation is built on')}</span></summary>${briefBackground()}<h3 class="four">${T('Four things to know')}</h3>
-<div class="bgrid fade">
-${BRIEF_ITEMS.who()}
-${BRIEF_ITEMS.clock()}
-${BRIEF_ITEMS.unit()}
-${BRIEF_ITEMS.scale()}
-</div></details>`+navRow(nextLbl(G.phase+1));
+${missionCard()}<div class="bgrid fade">${BRIEF_ITEMS.scale()}</div>`+navRow(nextLbl(G.phase+1));
 
 /* ---------- Chapters: briefs, bridge cards ----------
    Chapters 1–2 are deliberately bare: fast play, round numbers, no concept text. They set the instinct ("a buffer
@@ -2892,9 +2892,11 @@ const FEEDBACK_ENDPOINT='';
 const FB={rating:0,text:'',sent:false,status:''};
 const FB_SCALE=[['😞','Not at all'],['🙁','Not much'],['😐','It was OK'],['🙂','Quite a lot'],['😄','Loved it']];
 function fbRecord(){const L=G.results.length?finalLedger():null;
-  return{rating:FB.rating,ratingLabel:FB.rating?FB_SCALE[FB.rating-1][1]:'',feedback:FB.text.trim(),lang:LANG,
+  return{rating:FB.rating,ratingLabel:FB.rating?FB_SCALE[FB.rating-1][1]:'',feedback:FB.text.trim(),lang:LANG,chapter:G.chapter,chapterMinutes:chapterMinutes(),skippedWarmups:!!G.carry.skipped,
     submittedAt:new Date().toISOString(),seed:G.results.length?seedHex('final'):null,
     scores:L?{delivered:L.delivered,exposure:L.exposure,cost:L.cost}:null};}
+/* Minutes spent in each chapter (wall clock, thinking time included); the current chapter counts up to now. */
+function chapterMinutes(){return Object.fromEntries(Object.entries(G.chTimes||{}).map(([n,t])=>[n,+(((t.end||Date.now())-t.start)/60000).toFixed(1)]));}
 function feedbackBox(){
   if(FB.sent)return`<div class="card fbbox fade" id="fbbox"><p class="eyebrow">${T('Your feedback')}</p><h3>${T('Thank you!')}</h3>
 <p>${T('You rated the game {r} out of 5.',{r:FB.rating})} ${FB.status==='sent'?T('Your feedback has been sent.'):FB.status==='failed'?T('It could not be sent just now, but it is saved in this browser.'):T('It is saved in this browser. Download it to share it with the facilitator.')}</p>
@@ -2919,7 +2921,7 @@ Object.assign(A,{
 function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
 /* Feedback goes into the run log too, and is cleared when a new game starts. */
 (function(){const rs=A.restart;
-  A.downloadLog=function(){const log={decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
+  A.downloadLog=function(){const log={chapter:G.chapter,chapterMinutes:chapterMinutes(),decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
     if(FB.sent)log.feedback=fbRecord();
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(log,null,2)],{type:'application/json'}));a.download='mbg-run-'+seedHex('final')+'.json';a.click();};
   A.restart=function(force){const before=G;rs.apply(this,arguments);if(G!==before||G.phase===0)Object.assign(FB,{rating:0,text:'',sent:false,status:''});};
