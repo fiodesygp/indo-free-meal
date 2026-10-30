@@ -645,7 +645,7 @@ body{padding-left:0}
 .wuprod .phead{display:flex;align-items:center;gap:var(--sp-3)}.wuprod .phead h3{margin:0}
 .wufacts{margin:var(--sp-2) 0 var(--sp-3);padding-left:var(--sp-5);font:var(--t-body-s);color:var(--mute)}
 .wushelf{font:var(--t-body-s);margin:var(--sp-3) 0 0}.wuprod .ctl{margin-top:var(--sp-2)}
-.wucalc{width:100%;font:var(--t-body-s)}.wucalc td:last-child,.wucalc th:not(:first-child){text-align:right}.wucalc tr.tot td{border-top:2px solid var(--line);font-weight:var(--w-demi)}
+.wucalc{width:100%;font:var(--t-body-s)}.wucalc th{text-align:left}.wucalc td:last-child,.wucalc th:last-child{text-align:right}.wucalc tr.tot td{border-top:2px solid var(--line);font-weight:var(--w-demi)}
 .wuverdict{font:var(--t-title-xs);margin:var(--sp-2) 0 0}.wuverdict.good{color:var(--good)}.wuverdict.bad{color:var(--bad)}
 .wuchart{width:100%;height:auto}.wuchart.sm{max-width:49%;display:inline-block}@media(max-width:760px){.wuchart.sm{max-width:100%}}
 .wu-stock{fill:var(--green-soft-2);background:var(--green-soft-2)}.wu-short{fill:var(--bad);background:var(--bad)}.wu-waste{fill:var(--cost);background:var(--cost)}
@@ -653,7 +653,7 @@ body{padding-left:0}
 .legend .lg.wu-dem{height:3px}
 .wu-cro{fill:none;stroke:var(--cost);stroke-width:2.5;background:var(--cost)}.wu-sou{fill:none;stroke:var(--green-ink);stroke-width:2.5;background:var(--green-ink)}
 .wu-dot.cro{fill:var(--cost)}.wu-dot.sou{fill:var(--green-ink)}.legend .lg.wu-cro,.legend .lg.wu-sou{height:3px}
-.wu-load{fill:var(--line)}.wu-wait{fill:var(--green-soft)}.wu-road{fill:var(--green-brand)}.wu-now{stroke:var(--bad);stroke-width:2;stroke-dasharray:4 3}
+.wu-load{fill:var(--line);background:var(--line)}.wu-wait{fill:var(--green-soft);background:var(--green-soft)}.wu-road{fill:var(--green-brand);background:var(--green-brand)}.wu-now{stroke:var(--bad);stroke-width:2;stroke-dasharray:4 3}
 .c2plan td{vertical-align:middle}.c2plan th{text-align:left!important}.c2plan td.mv{white-space:nowrap}.c2plan .seg button{font:var(--t-caption);padding:4px 8px}
 .bridgegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:640px){.bridgegrid{grid-template-columns:1fr}}
 @media (max-width:640px){
@@ -980,9 +980,12 @@ function chapterDefaults(){
   const n=G.chapter;
   if(n===1)G.wu={pol:{dry:{q:100,ss:20},bread:{q:100,ss:20}}};  // estimate: a round-number starting policy
   if(n===2)G.wu={plan:{trucks:2,order:['A','B','C'],swap:{A:false,B:false,C:false}},rounds:{}};  // round 2 starts from round 1's plan
+  if(n===3)G.wu={plan:{runs:3,runMenu:[0,1,2,3].map(()=>({m:'M1',a:'none'}))}};  // estimate: three runs, one menu
 }
 /* Chapter end: what a finished chapter hands forward. */
-function chapterCarry(n){}
+function chapterCarry(n){
+  if(n===3){const p=G.wu.plan;G.carry.menu3=clone(p.runMenu.slice(0,p.runs));}
+}
 resetGame();
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -1120,8 +1123,9 @@ function kitchenOps(k,plan,ctx,day,legMult){
     if(last&&k.redirectIn>0)L*=P('REDIRECT_LEG_MULT');
     const hold=P('COOL_MIN')+P('PACK_MIN')+L+i*gap+early;
     const slot=day;  // every run that day carries the day's meal
-    const menu=(ctx&&ctx.menuSwap&&ctx.menuSwap[day])||plan.menu[day].m;
-    const addon=plan.menu[day].a;
+    const rm=plan.runMenu&&plan.runMenu[i];  // Chapter 3 only: a meal chosen per run
+    const menu=rm?rm.m:(ctx&&ctx.menuSwap&&ctx.menuSwap[day])||plan.menu[day].m;
+    const addon=rm?rm.a:plan.menu[day].a;
     const S=mealS(menu,addon,hold);
     out.push({i,slot,portions,leg:L,hold,menu,addon,S,overLimit:hold>P('HOLD_LIMIT_MIN'),legBreach:L>P('LEG_CAP_MIN')});
   }
@@ -1293,6 +1297,8 @@ function applyPreChoice(ctx,ev,ch){
   if(ev.type==='price'){if(ch==='absorb')ctx.priceAbsorb=ev.slots;if(ch==='swap'){ctx.menuSwap={};ev.slots.forEach(i=>ctx.menuSwap[i]='M4');}if(ch==='trim')ctx.proteinTrim=ev.slots;}
 }
 
+/* Nutrient score of what a child ate: half energy, half protein, each capped at its target. */
+const nutrientScore=(kcal,protein)=>0.5*Math.min(1,kcal/P('KCAL_TARGET'))+0.5*Math.min(1,protein/P('PROTEIN_TARGET'));
 function simulateYear(ctx){
   const w=G.world,plan=ctx.plan,D=P('PERIOD_DAYS'),YD=P('OPERATING_DAYS');
   ctx.simRng=rngFrom(fnv(decisionVector('sim'+ctx.y)));const r=ctx.simRng;
@@ -1343,9 +1349,9 @@ function simulateYear(ctx){
       if(ctx.priceAbsorb&&ctx.priceAbsorb.includes(run.slot)){eventCost+=run.portions*days*mp.cost*P('PRICE_PREMIUM');}
       const eff=1-leak*P('LEAK_NUTRITION');
       const prot=mp.protein*eff*(ctx.proteinTrim&&ctx.proteinTrim.includes(run.slot)?1-P('PRICE_TRIM'):1);
-      const score=0.5*Math.min(1,mp.kcal*eff/P('KCAL_TARGET'))+0.5*Math.min(1,prot/P('PROTEIN_TARGET'));
+      const score=nutrientScore(mp.kcal*eff,prot);
       const up=Math.min(1,mp.fit*trust*vm);
-      const sp=SHELF_PACK,spScore=0.5*Math.min(1,sp.kcal*eff/P('KCAL_TARGET'))+0.5*Math.min(1,sp.protein*eff/P('PROTEIN_TARGET'));
+      const sp=SHELF_PACK,spScore=nutrientScore(sp.kcal*eff,sp.protein*eff);
       nutr+=run.portions*(normD*up*score+shelfD*Math.min(1,sp.fit*trust)*spScore);
       served+=run.portions*days;
       food+=run.portions*(normD*cost+shelfD*sp.cost);
@@ -1485,6 +1491,28 @@ function bakeryRound(plan,extra){
     return{i,t,Sc,Ss,rows};});
   const hire=T0*W('B_TRUCK_FEE');
   return{plan:clone(plan),extra:extra?clone(extra):null,runs:out,ordered,sell,lostFresh:lostF,lostSwap:lostS,hire,delivered:(sell-hire)/ordered,lost:lostF/ordered};
+}
+
+/* ---- Chapter 3: one kitchen, one morning (the MBG engine, scoped; pure apart from a restored lookup) ----
+   One SPPG with one vehicle. The player picks how many runs go out (each carries VEHICLE_PORTIONS, up to the
+   2,500-portion kitchen) and the meal on each run; kitchenOps() gives each run's holding time and safe share S.
+   The kitchen sits in an existing regency (Teluk Lumba, roads 12 km/h) where the 6 km leg takes 30 min, so
+   held(run i) = 60 + 20 + 30 + (i − 1) × 60 = 110 + (i − 1) × 60 min. Scores for one morning:
+   reach = fed ÷ 2,500 · nutrition = Σ portions × menu fit × nutrient score ÷ fed (trust 1, no leakage)
+   food safety (this chapter) = 100 × (1 − portions at risk ÷ fed), portions at risk = Σ portions × (1 − S). */
+const C3_KITCHEN={rid:'PA',regency:1,radius:6};
+function morningOps(plan){
+  const kc=C3_KITCHEN,cap=P('CAP_STD'),load=Math.min(cap,plan.runs*P('VEHICLE_PORTIONS'));
+  const keep=[G.dec.radius[kc.rid],G.dec.regency[kc.rid]];G.dec.radius[kc.rid]=kc.radius;G.dec.regency[kc.rid]=kc.regency;
+  const pl={extraFleet:{},batch:{},lastRun:'farthest',menu:WEEK().map(()=>clone(plan.runMenu[0])),runMenu:plan.runMenu};
+  const ops=kitchenOps({rid:kc.rid,load,cap,fleet:1,corrective:false,redirectIn:0},pl,null,0);
+  G.dec.radius[kc.rid]=keep[0];G.dec.regency[kc.rid]=keep[1];
+  let nutr=0,risk=0;
+  const runs=ops.runs.map(r=>{const mp=mealProps(r.menu,r.addon),up=Math.min(1,mp.fit),score=nutrientScore(mp.kcal,mp.protein);
+    const weak=mealComps(r.menu,r.addon).filter(c=>c.lam!=null).reduce((a,c)=>compS(c,r.hold)<compS(a,r.hold)?c:a);
+    nutr+=r.portions*up*score;risk+=r.portions*(1-r.S);return Object.assign({},r,{up,score,weak,risk:r.portions*(1-r.S)});});
+  const reach=100*load/cap,nutrition=load?100*nutr/load:0,safety=load?100*(1-risk/load):100;
+  return{plan:clone(plan),runs,fed:load,cap,leg:ops.runs[0].leg,risk,ill:risk*P('ATTACK_RATE'),reach,nutrition,safety,delivered:(reach+nutrition)/2};
 }
 
 /* ============ SECTION 3 · UI ============ */
@@ -1906,14 +1934,22 @@ function clockSvg(){
   s+=`<text x="${L+30*sc}" y="${y+40}" font-size="12" text-anchor="middle" fill="#5E6368">${T('cool ≤ 60 min')}</text><text x="${L+145*sc}" y="${y+40}" font-size="12" text-anchor="middle" fill="#5E6368">${T('wait for a vehicle')}</text><text x="${L+225*sc}" y="${y+40}" font-size="12" text-anchor="middle" fill="#5E6368">${T('travel ≤ 30')}</text><text x="${L+240*sc}" y="${y+58}" font-size="12" font-weight="700" text-anchor="middle" fill="#D3302F">${T('4 hours')}</text>`;
   return s+'</svg>';
 }
+/* The brief's four facts, one card each. Chapters 3–5 split them: the clock in Ch3, the unit and who is fed in
+   Ch4, the scale in Ch5. */
+const BRIEF_ITEMS={
+  who:()=>`<div class="card bitem wide"><div class="bhead">${ICONS.fed(T('Who is fed, and when'))}<div class="big">~200</div></div><h3>${T('Who is fed, and when')}</h3><p>${T('The programme feeds schoolchildren, pregnant and nursing mothers and toddlers; this run models the school channel only. Kitchens serve on school days only: no weekends, holidays or semester breaks. That is about <b>200 operating days a year</b> in this model, derived from the school calendar because no official figure is published. A kitchen partner is paid per portion served ({incentive}), so a day without school is a day without income.',{incentive:g('incentive',T('Rp2,000 per portion'))})}</p></div>`,
+  clock:()=>`<div class="card bitem wide"><div class="bhead">${ICONS.clock(T('The clock'))}<div class="big">${T('4 h')}</div></div><h3>${T('The clock')}</h3><p>${T('From the moment cooking ends, a child must eat within 4 hours. Meals travel in {trays} at tropical room temperature, not hot. Cooked rice and protein held warm grow bacteria, slowly at first and then fast.',{trays:g('ompreng',T('reusable steel trays (ompreng)'))})}</p>${clockSvg()}</div>`,
+  unit:()=>`<div class="card bitem wide"><div class="bhead">${ICONS.kitchen(T('The unit'))}<div class="big">${num(2500)}</div></div><h3>${T('The unit')}</h3><p>${T('A {sppg} cooks 2,500 portions a day, or 3,000 with a {cook}, and serves schools within <b>6 km and 30 minutes</b>.',{sppg:g('SPPG',T('regional kitchen (SPPG)')),cook:g('BNSP',T('certified cook'))})}</p><div class="why"><h4>${T('Why regional kitchens, not a kitchen in every school?')}</h4><p>${T('The programme chose a central-kitchen model built on buying ingredients locally, to strengthen the rural economy and smallholder farming, and it expects the kitchens to create jobs in food preparation and logistics. The fact sheet gives those reasons; it does not claim that central kitchens are cheaper or safer.')}</p><p>${T('The cost is the subject of this simulation: a meal cooked far from the child has to travel, and its clock starts at the kitchen, not at the school.')}</p><p>${T('Compare the United States, where most schools prepare or finish meals on site. In a national survey of school districts, 45% used on-site kitchens and another 41% combined a central kitchen with on-site preparation; only 14% relied on central kitchens alone.')}</p><p class="mute hint">${T('Sources: UNICEF Indonesia fact sheet, July 2025; Nettles et al., Journal of the American Dietetic Association, 2005.')}</p></div></div>`,
+  scale:()=>`<div class="card bitem wide"><div class="bhead">${ICONS.scale(T('The scale'))}<div class="big">${T('57M')}</div></div><h3>${T('The scale')}</h3><p>${T('Nationally, about 27,000 kitchens feed about 57 million people a day (October 2026), against an original target of 82.9 million.')}</p></div>`,
+};
 VIEWS.brief=()=>`${explainerHtml()}<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="eyebrow">${T('Briefing · about two minutes')}</p><p class="kicker">Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</p><h2>${gameTitle()}</h2></div></div><p class="tagline">${T('Every meal has four hours to reach a child. Build the network that wins the race, for two years, on a budget.')}</p>
 <p class="lead">${T('You are setting up the school channel of Indonesia\'s free meals programme, {mbg}, in two pilot {regencies}, for two operating years, played as four semesters. Your job is physical flow: food from a kitchen to a child before it can harm them, under a budget and a clock.',{mbg:g('MBG',T('Makan Bergizi Gratis (Free Nutritious Meals)')),regencies:g('kabupaten',T('regencies'))})}</p></div>
 ${missionCard()}<details class="more card"><summary><b>${T('More context')}</b> <span class="mute">${T('optional · background, and four facts the simulation is built on')}</span></summary>${briefBackground()}<h3 class="four">${T('Four things to know')}</h3>
 <div class="bgrid fade">
-<div class="card bitem wide"><div class="bhead">${ICONS.fed(T('Who is fed, and when'))}<div class="big">~200</div></div><h3>${T('Who is fed, and when')}</h3><p>${T('The programme feeds schoolchildren, pregnant and nursing mothers and toddlers; this run models the school channel only. Kitchens serve on school days only: no weekends, holidays or semester breaks. That is about <b>200 operating days a year</b> in this model, derived from the school calendar because no official figure is published. A kitchen partner is paid per portion served ({incentive}), so a day without school is a day without income.',{incentive:g('incentive',T('Rp2,000 per portion'))})}</p></div>
-<div class="card bitem wide"><div class="bhead">${ICONS.clock(T('The clock'))}<div class="big">${T('4 h')}</div></div><h3>${T('The clock')}</h3><p>${T('From the moment cooking ends, a child must eat within 4 hours. Meals travel in {trays} at tropical room temperature, not hot. Cooked rice and protein held warm grow bacteria, slowly at first and then fast.',{trays:g('ompreng',T('reusable steel trays (ompreng)'))})}</p>${clockSvg()}</div>
-<div class="card bitem wide"><div class="bhead">${ICONS.kitchen(T('The unit'))}<div class="big">${num(2500)}</div></div><h3>${T('The unit')}</h3><p>${T('A {sppg} cooks 2,500 portions a day, or 3,000 with a {cook}, and serves schools within <b>6 km and 30 minutes</b>.',{sppg:g('SPPG',T('regional kitchen (SPPG)')),cook:g('BNSP',T('certified cook'))})}</p><div class="why"><h4>${T('Why regional kitchens, not a kitchen in every school?')}</h4><p>${T('The programme chose a central-kitchen model built on buying ingredients locally, to strengthen the rural economy and smallholder farming, and it expects the kitchens to create jobs in food preparation and logistics. The fact sheet gives those reasons; it does not claim that central kitchens are cheaper or safer.')}</p><p>${T('The cost is the subject of this simulation: a meal cooked far from the child has to travel, and its clock starts at the kitchen, not at the school.')}</p><p>${T('Compare the United States, where most schools prepare or finish meals on site. In a national survey of school districts, 45% used on-site kitchens and another 41% combined a central kitchen with on-site preparation; only 14% relied on central kitchens alone.')}</p><p class="mute hint">${T('Sources: UNICEF Indonesia fact sheet, July 2025; Nettles et al., Journal of the American Dietetic Association, 2005.')}</p></div></div>
-<div class="card bitem wide"><div class="bhead">${ICONS.scale(T('The scale'))}<div class="big">${T('57M')}</div></div><h3>${T('The scale')}</h3><p>${T('Nationally, about 27,000 kitchens feed about 57 million people a day (October 2026), against an original target of 82.9 million.')}</p></div>
+${BRIEF_ITEMS.who()}
+${BRIEF_ITEMS.clock()}
+${BRIEF_ITEMS.unit()}
+${BRIEF_ITEMS.scale()}
 </div></details>`+navRow(nextLbl(G.phase+1));
 
 /* ---------- Chapters: briefs, bridge cards ----------
@@ -1927,7 +1963,6 @@ const CH_TAG={
 };
 VIEWS.c1brief=()=>chapterHero(1,T(CH_TAG[1]))+navRow(nextLbl(G.phase+1));
 VIEWS.c2brief=()=>chapterHero(2,T(CH_TAG[2]))+navRow(nextLbl(G.phase+1));
-VIEWS.c3brief=()=>chapterHero(3,T(CH_TAG[3]))+navRow(nextLbl(G.phase+1));
 /* Pages a chapter has not built yet show only their name (removed as each chapter lands). */
 const pendingPage=()=>card(`<h2>${pageName(G.phase)}</h2>`)+navRow(nextLbl(G.phase+1));
 ['c1policy','c1run','c2round','c3plan','c3run'].forEach(k=>{if(!VIEWS[k])VIEWS[k]=pendingPage;});
@@ -2088,6 +2123,54 @@ function c2Results(r){const res=G.wu.rounds[r].res,rp=rpFull;
 ${calcTable([[T('Order value'),T('{n} cafés × {v}',{n:num(res.ordered/W('B_CAFE_ORDER')),v:rp(W('B_CAFE_ORDER'))}),rp(res.ordered)],[T('Sellable on arrival'),T('value × freshness; sourdough instead pays {p} of the croissant value',{p:pct(W('B_SWAP_VALUE'))}),rp(res.sell)],
 [T('Truck hire'),`${res.plan.trucks} × ${rp(W('B_TRUCK_FEE'))}`,'− '+rp(res.hire)],[T('Delivered'),`(${rp(res.sell)} − ${rp(res.hire)}) ÷ ${rp(res.ordered)}`,`<b>${pct(res.delivered)}</b>`,'tot'],[T('Freshness lost'),`${rp(res.lostFresh)} ÷ ${rp(res.ordered)}`,`<b>${pct(res.lost)}</b>`,'tot']])}
 ${res.lostSwap?`<p class="mute hint">${T('Sourdough sent instead of croissants gave up {x} of order value.',{x:rp(res.lostSwap)})}</p>`:''}${c2Curve(res.runs.map(x=>x.t))}`)+`</div>`;}
+
+/* ---------- Chapter 3: MBG, one kitchen, one morning ----------
+   The MBG engine scoped to one kitchen: kitchenOps() with a meal per run. The brief carries one of the four facts
+   (the clock). If the player skipped Chapters 1–2 (ALLOW_SKIP_WARMUPS), it also carries the safety-stock line. */
+const C3_SKIP_LINE='In a warehouse, a buffer of extra stock absorbs surprises. Cooked food cannot be buffered: every portion\'s four-hour clock starts when cooking ends.';
+VIEWS.c3brief=()=>`${explainerHtml()}${chapterHero(3,T(CH_TAG[3]))}${ALLOW_SKIP_WARMUPS&&G.carry.skipped?`<div class="card note fade"><p>${T(C3_SKIP_LINE)}</p></div>`:''}<div class="bgrid fade">${BRIEF_ITEMS.clock()}</div>`+navRow(nextLbl(G.phase+1));
+const C3_COOK_END=()=>P('COOK_START_MIN')+P('COOK_DURATION_MIN');  // cooking starts 02:00 and ends 06:00
+function c3Plan(){const p=G.wu.plan,vp=P('VEHICLE_PORTIONS'),cap=P('CAP_STD'),ro=viewing(),o=morningOps(p);
+  const rows=o.runs.map(r=>`<tr><td><b>${T('Run {n}',{n:r.i+1})}</b></td><td>${num(r.portions)}</td><td>${P('COOL_MIN')} + ${P('PACK_MIN')} + ${Math.round(r.leg)} + ${r.i} × ${Math.round(2*r.leg)} = <b class="${r.overLimit?'bad':''}">${Math.round(r.hold)}</b>${r.overLimit?` <span class="warn">${T('past the 4-hour limit')}</span>`:''}</td>
+<td><span class="thumbcell">${menuPhoto(r.menu,'none','sm')}<select aria-label="${esc(T('Meal on run {n}',{n:r.i+1}))}" ${ro?'disabled':''} onchange="A.wuPol('plan.runMenu.${r.i}.m',this.value)">${MENU_IDS.map(id=>`<option value="${id}" ${id===r.menu?'selected':''}>${esc(menuName(id))}</option>`).join('')}</select></span></td></tr>`).join('');
+  return`<div class="fade">`+card(`<h2>${T('Menu and runs')}</h2><p class="lead">${T('Cooking ends at {t}. One vehicle carries {v} portions a run, and each run leaves when it is back. Choose how many runs go out and which meal each one carries.',{t:hhmm(C3_COOK_END()),v:num(vp)})}</p>
+<div class="ctl"><span>${T('Runs this morning')}</span>${seg([1,2,3,4].map(x=>[x,String(x)]),p.runs,v=>ro?'':`A.c3Runs(${v})`)}<small>${T('{r} × {v} = {f} children fed, of {c}',{r:p.runs,v:num(vp),f:num(o.fed),c:num(cap)})}</small></div>
+<table class="wucalc c2plan"><tr><th>${T('Run')}</th><th>${T('Children')}</th><th>${T('Minutes from cooking to eating')}</th><th>${T('Meal')}</th></tr>${rows}</table>
+<p class="mute hint">${T('Held = cooling {a} + packing {b} + drive {c} + (run − 1) × round trip {d} min.',{a:P('COOL_MIN'),b:P('PACK_MIN'),c:Math.round(o.leg),d:Math.round(2*o.leg)})}</p>${c3Timeline(o,null)}`)+`</div>`+navRow('▶ '+T('Run the morning'),true,'A.c3Run()');}
+VIEWS.c3plan=()=>c3Plan();
+/* Timeline: cooling and packing, waiting for the vehicle, on the road; the 4-hour line; the cursor is the clock. */
+function c3Timeline(o,m){
+  const W0=660,L=70,base=P('COOL_MIN')+P('PACK_MIN'),end=300,sx=(W0-L-16)/end,rh=26,H=o.runs.length*rh+40,X=t=>L+Math.min(end,t)*sx,lim=P('HOLD_LIMIT_MIN');
+  let s=`<svg viewBox="0 0 ${W0} ${H}" class="wuchart" role="img" aria-label="${esc(T('The morning'))}">`;
+  for(const t of[0,60,120,180,240,300])s+=`<line class="wu-grid" x1="${X(t)}" x2="${X(t)}" y1="6" y2="${H-22}"/><text class="wu-lab" x="${X(t)}" y="${H-8}" text-anchor="middle">${t}</text>`;
+  o.runs.forEach((r,k)=>{const y=8+k*rh,t0=r.hold-r.leg,on=m!=null&&m>=r.hold;
+    s+=`<text class="wu-lab" x="${L-8}" y="${y+14}" text-anchor="end">${T('run {n}',{n:r.i+1})}</text><rect class="wu-load" x="${X(0)}" y="${y+4}" width="${base*sx}" height="12"/>`;
+    if(t0>base)s+=`<rect class="wu-wait" x="${X(base)}" y="${y+4}" width="${(t0-base)*sx}" height="12"/>`;
+    s+=`<rect class="${r.overLimit?'wu-short':'wu-road'}" x="${X(t0)}" y="${y+4}" width="${Math.max(1,(Math.min(end,r.hold)-t0)*sx)}" height="12"/>`;
+    if(on)s+=`<text class="wu-lab" x="${X(r.hold)+6}" y="${y+14}">${T('{s} eaten safe',{s:pct(r.S)})}</text>`;});
+  s+=`<line class="wu-now" x1="${X(lim)}" x2="${X(lim)}" y1="2" y2="${H-22}"/><text class="wu-lab" x="${X(lim)}" y="${H-24}" text-anchor="middle">${T('4-hour limit')}</text>`;
+  if(m!=null)s+=`<line class="wu-axis" x1="${X(m)}" x2="${X(m)}" y1="2" y2="${H-22}" stroke-width="2"/>`;
+  return s+`</svg><div class="legend"><span><i class="lg wu-load"></i>${T('cooling + packing')}</span><span><i class="lg wu-wait"></i>${T('waiting for a vehicle')}</span><span><i class="lg wu-road"></i>${T('on the road')}</span><span class="mute">${T('Minutes after cooking ends.')}</span></div>`;}
+const C3_MS_PER_MIN=120;  // display only: a four-run morning plays in about 37 s at 1×
+const c3End=o=>Math.round(o.runs[o.runs.length-1].hold)+20;
+VIEWS.c3run=()=>{const w=G.wu;if(!w.res)return pendingPage();
+  if(wuRunning()&&!viewing())return wuShell({eyebrow:T('Run · one morning'),title:T('The morning'),ticks:[0,60,120,180,240,300].map(t=>hhmm(C3_COOK_END()+t)),
+    hud:[['clock',T('Clock'),T('cooking ended {t}',{t:hhmm(C3_COOK_END())})],['runs',T('Runs delivered'),''],['fed',T('Children fed'),''],['risk',T('Portions at risk'),T('eaten after their safe window')],['held',T('Held longest'),T('minutes')]]});
+  return c3Results()+navRow(nextLbl(G.phase+1));};
+WU_PAINT[3]=f=>{const o=G.wu.res,m=f*c3End(o),st=$('wu-stage'),arr=o.runs.filter(r=>r.hold<=m);
+  if(st)st.innerHTML=c3Timeline(o,m);
+  wuSet('clock',hhmm(C3_COOK_END()+m));wuSet('runs',`${arr.length} / ${o.runs.length}`);wuSet('fed',num(sum(arr.map(r=>r.portions))));
+  wuSet('risk',num(sum(arr.map(r=>r.risk))));wuSet('held',arr.length?num(arr[arr.length-1].hold):'–');};
+WU_END[3]=()=>{const o=G.wu.res;return wuEndCard(T('{t} · every run delivered',{t:hhmm(C3_COOK_END()+o.runs[o.runs.length-1].hold)}),T('Morning complete'),[[T('Children fed'),num(o.fed)],[T('Portions at risk'),num(o.risk)]]);};
+WU_LED[3]=()=>{const o=G.wu.res;return{reach:o.reach,nutrition:o.nutrition,safety:o.safety,delivered:o.delivered};};
+function c3Results(){const o=G.wu.res;
+  const sExpr=r=>r.hold<=r.weak.lam?T('1 (held ≤ λ)'):`0.5^((${Math.round(r.hold)} − ${r.weak.lam}) ÷ ${r.weak.h}) = ${pct(r.S)}`;
+  const rows=o.runs.map(r=>`<tr><td>${T('Run {n}',{n:r.i+1})}</td><td>${num(r.portions)}</td><td class="${r.overLimit?'bad':''}">${Math.round(r.hold)}</td><td>${menuName(r.menu)}</td><td>${compName(r.weak)} (λ ${r.weak.lam}, h ${r.weak.h})</td><td>${sExpr(r)}</td><td>${num(r.risk)}</td></tr>`).join('');
+  return`<div class="fade">`+card(`<h2>${T('The morning: results')}</h2><table class="wucalc"><tr><th>${T('Run')}</th><th>${T('Children')}</th><th>${T('Held (min)')}</th><th>${T('Meal')}</th><th>${T('Weakest component')}</th><th>${T('Safe share S')}</th><th>${T('Portions at risk')}</th></tr>${rows}</table>
+<p class="mute hint">${T('Portions at risk on a run = children × (1 − S). S is the same lag-then-halving curve as Freshness in Chapter 2, here labelled Safety: 1 until λ, then halving every h minutes. A meal is as safe as its weakest component.')}</p>
+${calcTable([[T(DIMS.reach),`${num(o.fed)} ÷ ${num(o.cap)}`,sc(o.reach)],[T(DIMS.nutrition),T('Σ children × menu fit × nutrient score ÷ children fed'),sc(o.nutrition)],[T(PAIRS.delivered.label),`(${sc(o.reach)} + ${sc(o.nutrition)}) ÷ 2`,`<b>${sc(o.delivered)}</b>`,'tot'],
+[T(DIMS.safety),`100 × (1 − ${num(o.risk)} ÷ ${num(o.fed)})`,`<b>${sc(o.safety)}</b>`,'tot']])}
+<p class="wuverdict ${o.risk>=1?'bad':'good'}">${o.risk>=1?T('About {n} children could fall ill: {p} of the portions at risk, the simulation\'s attack rate.',{n:num(o.ill),p:pct(P('ATTACK_RATE'))}):T('Every child ate inside the safe window.')}</p>${c3Timeline(o,c3End(o))}`)+`</div>`;}
 
 /* ---------- Set-up page 1: priorities + posture ---------- */
 const head=(n,t)=>`<h2><span class="num">${n}</span>${t}</h2>`;
@@ -2619,6 +2702,8 @@ const A={
   /* Warm-up chapters: policy edits, starting a run, the run controls */
   wuPol(path,v){if(viewing())return;setPath(G.wu,path,v);render();},
   c1Run(){if(viewing())return;G.wu.res=groceryRound(G.wu.pol);G.wu.base=groceryNoBuffer(G.wu.pol);wuStart(W('G_DAYS')*6000);G.phase++;render();},
+  c3Runs(v){if(viewing())return;G.wu.plan.runs=v;render();},
+  c3Run(){if(viewing())return;G.wu.res=morningOps(G.wu.plan);wuStart(c3End(G.wu.res)*C3_MS_PER_MIN);G.phase++;render();},
   c2Move(id,d){if(viewing())return;const o=G.wu.plan.order,i=o.indexOf(id),j=i+d;if(j<0||j>=o.length)return;o.splice(i,1);o.splice(j,0,id);render();},
   c2Run(){if(viewing())return;const r=G.phase,res=bakeryRound(G.wu.plan,null),rd={plan:clone(G.wu.plan),res,endMin:c2End(res)};G.wu.rounds[r]=rd;
     wuStart(rd.endMin*C2_MS_PER_MIN,G.phase,r===2?W('B_LOAD_MIN')*C2_MS_PER_MIN:null);render();},
@@ -2822,6 +2907,35 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id) and Spanish (es). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"In a warehouse, a buffer of extra stock absorbs surprises. Cooked food cannot be buffered: every portion's four-hour clock starts when cooking ends.":{id:"Di gudang, stok penyangga menyerap kejutan. Makanan matang tidak bisa disangga: waktu empat jam setiap porsi mulai berjalan saat memasak selesai.",es:"En un almacén, un colchón de existencias absorbe las sorpresas. La comida cocinada no admite colchón: el reloj de cuatro horas de cada ración arranca al terminar de cocinar."},
+"Meal on run {n}":{id:"Menu pada pengantaran {n}",es:"Comida del viaje {n}"},
+"past the 4-hour limit":{id:"melewati batas 4 jam",es:"pasado el límite de 4 horas"},
+"Cooking ends at {t}. One vehicle carries {v} portions a run, and each run leaves when it is back. Choose how many runs go out and which meal each one carries.":{id:"Memasak selesai pukul {t}. Satu kendaraan membawa {v} porsi per pengantaran, dan setiap pengantaran berangkat saat kendaraan kembali. Pilih berapa kali pengantaran dan menu apa yang dibawa masing-masing.",es:"La cocina termina a las {t}. Un vehículo lleva {v} raciones por viaje, y cada viaje sale cuando vuelve. Elija cuántos viajes salen y qué comida lleva cada uno."},
+"Runs this morning":{id:"Pengantaran pagi ini",es:"Viajes esta mañana"},
+"{r} × {v} = {f} children fed, of {c}":{id:"{r} × {v} = {f} anak makan, dari {c}",es:"{r} × {v} = {f} niños comen, de {c}"},
+"Children":{id:"Anak",es:"Niños"},
+"Minutes from cooking to eating":{id:"Menit dari masak sampai makan",es:"Minutos de la cocina a la mesa"},
+"Meal":{id:"Menu",es:"Comida"},
+"Held = cooling {a} + packing {b} + drive {c} + (run − 1) × round trip {d} min.":{id:"Waktu tunggu = pendinginan {a} + pengemasan {b} + perjalanan {c} + (pengantaran − 1) × pulang-pergi {d} mnt.",es:"Espera = enfriado {a} + envasado {b} + trayecto {c} + (viaje − 1) × ida y vuelta {d} min."},
+"Run the morning":{id:"Jalankan pagi ini",es:"Jugar la mañana"},
+"{s} eaten safe":{id:"{s} dimakan dengan aman",es:"{s} comido sin riesgo"},
+"Minutes after cooking ends.":{id:"Menit setelah memasak selesai.",es:"Minutos tras terminar de cocinar."},
+"Run · one morning":{id:"Jalankan · satu pagi",es:"Jugar · una mañana"},
+"Clock":{id:"Jam",es:"Hora"},
+"cooking ended {t}":{id:"memasak selesai {t}",es:"la cocina terminó a las {t}"},
+"Portions at risk":{id:"Porsi berisiko",es:"Raciones en riesgo"},
+"eaten after their safe window":{id:"dimakan setelah batas amannya",es:"comidas fuera de su margen seguro"},
+"Held longest":{id:"Tunggu terlama",es:"Espera más larga"},
+"minutes":{id:"menit",es:"minutos"},
+"{t} · every run delivered":{id:"{t} · semua pengantaran tiba",es:"{t} · todos los viajes entregados"},
+"1 (held ≤ λ)":{id:"1 (tunggu ≤ λ)",es:"1 (espera ≤ λ)"},
+"The morning: results":{id:"Pagi itu: hasil",es:"La mañana: resultados"},
+"Held (min)":{id:"Tunggu (mnt)",es:"Espera (min)"},
+"Safe share S":{id:"Bagian aman S",es:"Fracción segura S"},
+"Portions at risk on a run = children × (1 − S). S is the same lag-then-halving curve as Freshness in Chapter 2, here labelled Safety: 1 until λ, then halving every h minutes. A meal is as safe as its weakest component.":{id:"Porsi berisiko pada satu pengantaran = anak × (1 − S). S adalah kurva tunda-lalu-separuh yang sama dengan Kesegaran di Bab 2, di sini disebut Keamanan: 1 sampai λ, lalu separuh setiap h menit. Sebuah menu seaman komponen terlemahnya.",es:"Raciones en riesgo en un viaje = niños × (1 − S). S es la misma curva de retardo y luego mitad que la Frescura del capítulo 2, aquí llamada Seguridad: 1 hasta λ, luego se reduce a la mitad cada h minutos. Una comida es tan segura como su componente más débil."},
+"Σ children × menu fit × nutrient score ÷ children fed":{id:"Σ anak × kecocokan menu × skor gizi ÷ anak yang makan",es:"Σ niños × aceptación del menú × puntuación nutricional ÷ niños alimentados"},
+"About {n} children could fall ill: {p} of the portions at risk, the simulation's attack rate.":{id:"Sekitar {n} anak bisa jatuh sakit: {p} dari porsi berisiko, tingkat serangan dalam simulasi ini.",es:"Unos {n} niños podrían enfermar: el {p} de las raciones en riesgo, la tasa de ataque de la simulación."},
+"Every child ate inside the safe window.":{id:"Setiap anak makan dalam batas aman.",es:"Todos los niños comieron dentro del margen seguro."},
 "Breakfast cafés":{id:"Kafe sarapan",es:"Cafeterías de desayuno"},
 "Corner cafés":{id:"Kafe sudut jalan",es:"Cafeterías de barrio"},
 "Lunch cafés":{id:"Kafe makan siang",es:"Cafeterías de almuerzo"},
@@ -4014,6 +4128,9 @@ const CH_AUTOPLAY={
     const f=r=>({runs:r.runs.length,delivered:+r.delivered.toFixed(3),lost:+r.lost.toFixed(3),hire:r.hire});
     return{animSec:Object.fromEntries(Object.entries(plans).map(([k,p])=>[k,[c2End(bakeryRound(p,null)),c2End(bakeryRound(p,{swap:false}))].map(m=>m*C2_MS_PER_MIN/1000)])),
       runs:Object.fromEntries(Object.entries(plans).map(([k,p])=>[k,{round1:f(bakeryRound(p,null)),round2:f(bakeryRound(p,{swap:false})),round2swap:f(bakeryRound(p,{swap:true}))}]))};},
+  3:()=>{const M=(...ids)=>[0,1,2,3].map(i=>({m:ids[Math.min(i,ids.length-1)],a:'none'})),plans={'3 runs, fried chicken':{runs:3,runMenu:M('M1')},'4 runs, fried chicken':{runs:4,runMenu:M('M1')},
+      '3 runs, coconut gravy':{runs:3,runMenu:M('M2')},'4 runs, gravy early, dry pack last':{runs:4,runMenu:M('M2','M2','M1','M7')},'2 runs, gravy':{runs:2,runMenu:M('M2')},'1 run':{runs:1,runMenu:M('M2')}};
+    return{runs:Object.fromEntries(Object.entries(plans).map(([k,p])=>{const o=morningOps(p);return[k,{fed:o.fed,held:o.runs.map(r=>Math.round(r.hold)),S:o.runs.map(r=>+r.S.toFixed(2)),risk:Math.round(o.risk),reach:Math.round(o.reach),nutrition:Math.round(o.nutrition),safety:Math.round(o.safety),animSec:c3End(o)*C3_MS_PER_MIN/1000}];}))};},
   5:()=>({runs:runScenarios()}),
 };
 function autoplayChapter(n){const ch=G.chapter,out=CH_AUTOPLAY[n]?CH_AUTOPLAY[n]():{note:'no autoplay yet'};G.chapter=ch;return out;}
