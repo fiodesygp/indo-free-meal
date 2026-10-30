@@ -641,6 +641,16 @@ body{padding-left:0}
 #nav .navchip.on{background:var(--green-soft);color:var(--green-ink)}#nav .navchip.on b{background:var(--green-ink);color:var(--panel)}
 #nav .navchsep{flex:none;width:16px;height:2px;background:var(--line)}
 .ledger.n1{grid-template-columns:minmax(0,1fr);max-width:520px}.ledger.n2{grid-template-columns:repeat(2,minmax(0,1fr));max-width:760px}
+.wu2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:760px){.wu2{grid-template-columns:1fr}}
+.wuprod .phead{display:flex;align-items:center;gap:var(--sp-3)}.wuprod .phead h3{margin:0}
+.wufacts{margin:var(--sp-2) 0 var(--sp-3);padding-left:var(--sp-5);font:var(--t-body-s);color:var(--mute)}
+.wushelf{font:var(--t-body-s);margin:var(--sp-3) 0 0}.wuprod .ctl{margin-top:var(--sp-2)}
+.wucalc{width:100%;font:var(--t-body-s)}.wucalc td:last-child,.wucalc th:not(:first-child){text-align:right}.wucalc tr.tot td{border-top:2px solid var(--line);font-weight:var(--w-demi)}
+.wuverdict{font:var(--t-title-xs);margin:var(--sp-2) 0 0}.wuverdict.good{color:var(--good)}.wuverdict.bad{color:var(--bad)}
+.wuchart{width:100%;height:auto}.wuchart.sm{max-width:49%;display:inline-block}@media(max-width:760px){.wuchart.sm{max-width:100%}}
+.wu-stock{fill:var(--green-soft-2);background:var(--green-soft-2)}.wu-short{fill:var(--bad);background:var(--bad)}.wu-waste{fill:var(--cost);background:var(--cost)}
+.wu-dem{stroke:var(--ink);stroke-width:2.5;background:var(--ink)}.wu-axis{stroke:var(--mute)}.wu-grid{stroke:var(--line)}.wu-lab{fill:var(--mute);font:var(--t-caption)}
+.legend .lg.wu-dem{height:3px}
 .bridgegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:640px){.bridgegrid{grid-template-columns:1fr}}
 @media (max-width:640px){
   #nav{padding:var(--sp-2) var(--sp-2) 0}
@@ -910,6 +920,21 @@ const CHAPTER_SCOPE={
   4:{periods:1,events:false,regions:1},
   5:{periods:null,events:true,regions:2},
 };
+/* Warm-up parameters (Chapters 1–2). Every value is an estimate, chosen for round numbers and fast play; adjust only
+   if gameplay breaks. Listed in the dev panel's parameter table with the MBG parameters. */
+const WARMUP = {
+  // ---- Chapter 1: grocery store (estimates)
+  G_DAYS:{v:10,unit:'days',src:'estimate',note:'One round of trading days.'},
+  G_LEAD:{v:1,unit:'days',src:'estimate',note:'An order placed at closing arrives the next morning.'},
+  G_DEM_MIN:{v:80,unit:'units/day',src:'estimate',note:'Daily demand is uniform between min and max, the same draw for both products.'},
+  G_DEM_MAX:{v:120,unit:'units/day',src:'estimate',note:'See G_DEM_MIN.'},
+  G_HOLD_DRY:{v:100,unit:'Rp/unit/day',src:'estimate',note:'Holding cost on dry goods left on the shelf at closing.'},
+  G_STOCKOUT:{v:1000,unit:'Rp/unit',src:'estimate',note:'Penalty per unit of demand not met. The spec gave it for dry goods; bread uses the same value (agreed).'},
+  G_BREAD_LIFE:{v:2,unit:'days',src:'estimate',note:'A loaf can be sold on its delivery day and the next; unsold on day 3, it is waste.'},
+  G_BREAD_COST:{v:3000,unit:'Rp/unit',src:'estimate',note:'Unit cost of bread, lost in full on a wasted loaf.'},
+};
+const W = id => { if (!(id in WARMUP)) throw new Error('Unknown warm-up param ' + id); return WARMUP[id].v; };
+const G_QTY_OPTIONS=[80,90,100,110,120], G_SS_OPTIONS=[0,10,20,30,40];  // estimate: round-number choices
 
 /* ============ SECTION 2 · ENGINE ============ */
 let G;
@@ -926,7 +951,10 @@ function resetGame(){
   chapterDefaults();
 }
 /* Chapter start state: what each chapter takes from the ones before it (G.carry) and the levers it fixes. */
-function chapterDefaults(){}
+function chapterDefaults(){
+  const n=G.chapter;
+  if(n===1)G.wu={pol:{dry:{q:100,ss:20},bread:{q:100,ss:20}}};  // estimate: a round-number starting policy
+}
 /* Chapter end: what a finished chapter hands forward. */
 function chapterCarry(n){}
 resetGame();
@@ -1383,6 +1411,34 @@ function resolveEvent(choice){
   advance();
 }
 
+/* ---- Chapter 1: grocery store, one round (pure) ----
+   Policy per product: order quantity q + safety stock ss. Each evening the store orders enough to open the next
+   morning with q + ss on the shelf (lead time 1 day; day 1 opens full). Demand is one fixed draw per day, the same
+   for both products, so the only difference between them is that bread spoils. Shoppers take the freshest bread
+   first; a loaf still unsold at the end of its last day of shelf life is waste. */
+/* Seed chosen (estimate) so the ten-day draw averages exactly 100 a day and its costs sit near the expected values. */
+function groceryDemand(){const r=rngFrom(fnv('grocery-demand-68')),lo=W('G_DEM_MIN'),hi=W('G_DEM_MAX');return Array.from({length:W('G_DAYS')},()=>lo+Math.floor(r()*(hi-lo+1)));}
+function groceryRound(pol){
+  const D=groceryDemand(),life=W('G_BREAD_LIFE'),Sd=pol.dry.q+pol.dry.ss,Sb=pol.bread.q+pol.bread.ss;
+  let dry=Sd;const age=new Array(life).fill(0);age[0]=Sb;  // bread on the shelf by age in days (0 = delivered today)
+  const days=[],dr={stockouts:0,holdUnits:0,sold:0},br={stockouts:0,waste:0,sold:0};
+  D.forEach((d,i)=>{
+    const dOpen=dry,dSold=Math.min(dry,d);dry-=dSold;
+    const bOpen=sum(age);let want=d;for(let a=0;a<life&&want>0;a++){const s=Math.min(age[a],want);age[a]-=s;want-=s;}
+    const bSold=d-want,waste=age[life-1];age[life-1]=0;
+    for(let a=life-1;a>0;a--)age[a]=age[a-1];age[0]=0;  // overnight, every loaf ages a day
+    const oDry=Math.max(0,Sd-dry),oBread=Math.max(0,Sb-sum(age)),last=i===D.length-1;
+    days.push({day:i+1,demand:d,dry:{open:dOpen,sold:dSold,short:d-dSold,left:dry,order:last?0:oDry},bread:{open:bOpen,sold:bSold,short:want,waste,left:sum(age),order:last?0:oBread}});
+    dr.stockouts+=d-dSold;dr.holdUnits+=dry;dr.sold+=dSold;br.stockouts+=want;br.waste+=waste;br.sold+=bSold;
+    if(!last){dry+=oDry;age[0]=oBread;}
+  });
+  dr.shortCost=dr.stockouts*W('G_STOCKOUT');dr.holdCost=dr.holdUnits*W('G_HOLD_DRY');dr.total=dr.shortCost+dr.holdCost;
+  br.shortCost=br.stockouts*W('G_STOCKOUT');br.wasteCost=br.waste*W('G_BREAD_COST');br.total=br.shortCost+br.wasteCost;
+  return{pol:clone(pol),demand:D,days,dry:dr,bread:br,shelf:{dry:Sd,bread:Sb}};
+}
+/* The same round with no safety stock: what the buffer bought, product by product. */
+function groceryNoBuffer(pol){return groceryRound({dry:{q:pol.dry.q,ss:0},bread:{q:pol.bread.q,ss:0}});}
+
 /* ============ SECTION 3 · UI ============ */
 /* ---------- Language ----------
    Every player-facing string goes through T(english, vars). English is the source text; Bahasa Indonesia ('id')
@@ -1547,7 +1603,7 @@ const card=(html,cls)=>`<div class="card ${cls||''}">${html}</div>`;
 const fixedNote=t=>`<div class="fixed">${t}</div>`;
 
 /* ---------- Navigation ---------- */
-function simRunning(){const a=G.anim;return a&&a.y===G.phase-YEAR_PHASE0&&!a.finished;}
+function simRunning(){const a=G.anim;return(a&&a.y===G.phase-YEAR_PHASE0&&!a.finished)||wuRunning();}
 /* Viewing: G.viewing holds a past page shown read-only (null = the live step, G.phase).
    Every page already passed can be revisited, but decisions are locked; only Restart reopens them. */
 const viewing=()=>G.viewing!=null;
@@ -1841,6 +1897,84 @@ VIEWS.bridge=()=>{const n=G.chapter,[a,b]=BRIDGE[n];
 /* Moving between chapters: a fresh game state for the new chapter, keeping what earlier chapters hand forward. */
 function startChapter(n){if(G.anim)G.anim.loop=false;wuStop();G.chapter=n;resetGame();setChapter(n);G.chTimes[n]=G.chTimes[n]||{start:Date.now()};render();}
 function wuStop(){if(G&&G.wu&&G.wu.anim)G.wu.anim.loop=false;}
+
+/* ---------- Warm-up run animation (Chapters 1–3) ----------
+   The same shell as the semester run: progress track, readouts, play/pause, 1×/2×/4×, skip ahead, and an end card.
+   The result is computed before the animation starts, so the animation is display only. Each chapter supplies
+   WU_PAINT[n](f) to redraw its stage at progress f in [0,1], WU_END[n]() for the end card, and WU_LED[n]() for the
+   ledger values once the run is seen. */
+const WU_PAINT={},WU_END={},WU_LED={};
+const wuRunning=()=>{const a=G.wu&&G.wu.anim;return!!(a&&!a.finished&&a.page===G.phase);};
+function wuStart(dur){G.wu.anim={page:G.phase+1,t:0,dur,speed:1,playing:true,done:false,finished:false,loop:false,last:0};}
+function wuShell(o){const a=G.wu.anim;
+  return`<div class="card sim fade" id="wuroot"><div class="simhead"><div><p class="eyebrow">${o.eyebrow}</p><h2 style="margin:0">${o.title}</h2></div>
+<div class="simctl"><button class="ghost" id="wu-play" onclick="A.wuToggle()">${playLabel(a.playing)}</button>${seg([[1,'1×'],[2,'2×'],[4,'4×']],a.speed,v=>`A.wuSpeed(${v})`)}<button class="ghost" onclick="A.wuSkip()" title="${esc(T('Jump to the end of the run'))}">⏭ ${T('Skip ahead')}</button></div></div>
+<div class="track"><div class="trackfill" id="wu-bar"></div></div><div class="trackl">${o.ticks.map(t=>`<span>${t}</span>`).join('')}</div>
+<div class="hud">${o.hud.map(([id,l,s])=>`<div><small>${l}</small><b id="wu-${id}">0</b><small>${s||''}</small></div>`).join('')}</div>
+<div class="wustage" id="wu-stage"></div></div><div class="ovl" id="wu-ovl" hidden></div>`;}
+function wuMount(){const a=G.wu&&G.wu.anim;if(!a||!$('wuroot'))return;wuPaint();if(a.done){wuEnd();return;}if(!a.loop){a.loop=true;a.last=0;requestAnimationFrame(wuTick);}}
+function wuTick(ts){const a=G.wu&&G.wu.anim;if(!a||!a.loop)return;if(!$('wuroot')){a.loop=false;return;}
+  const dt=a.last?Math.min(80,ts-a.last):0;a.last=ts;if(a.playing){a.t=Math.min(a.dur,a.t+dt*a.speed);if(a.t>=a.dur)a.done=true;}
+  wuPaint();if(a.done){a.loop=false;wuEnd();return;}requestAnimationFrame(wuTick);}
+function wuPaint(){const a=G.wu.anim,b=$('wu-bar');if(b)b.style.width=(a.t/a.dur*100)+'%';WU_PAINT[G.chapter](a.t/a.dur);}
+function wuEnd(){const o=$('wu-ovl');if(!o)return;o.innerHTML=WU_END[G.chapter]();o.hidden=false;}
+const wuSet=(id,v)=>{const e=$('wu-'+id);if(e&&e.textContent!==v)e.textContent=v;};
+const wuEndCard=(kicker,title,kv)=>`<div class="ovlcard pop"><p class="eyebrow">${kicker}</p><h2>${title}</h2><div class="kv">${kv.map(([l,v])=>`<div>${l}<br><b>${v}</b></div>`).join('')}</div><div class="row" style="margin-top:14px"><button class="right" onclick="A.wuDone()">${T('See the results →')}</button></div></div>`;
+/* A calculation table: label, arithmetic, result. Every warm-up result is shown with its arithmetic. */
+const calcTable=rows=>`<table class="wucalc">${rows.map(r=>`<tr class="${r[3]||''}"><td>${r[0]}</td><td class="mute">${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</table>`;
+
+/* ---------- Chapter 1: the grocery store ---------- */
+const C1_ICON={dry:l=>ICON_WRAP('<path d="M17 20h22l-2 22H19z"/><path d="M17 20l3-6h16l3 6"/><path d="M23 28h10"/>',l),
+  bread:l=>ICON_WRAP('<path d="M14 30c0-8 6-12 14-12s14 4 14 12v8H14z"/><path d="M21 22l3 8M28 20v10M35 22l-3 8"/>',l)};
+const c1Name=k=>T(k==='dry'?'Dry goods':'Bread');
+function c1Card(k){const p=G.wu.pol[k],dry=k==='dry',ro=viewing()||G.phase>1;
+  const set=(f,v)=>ro?'':`A.wuPol('pol.${k}.${f}',${v})`;
+  return`<div class="card wuprod">${'<div class="phead">'+C1_ICON[k](c1Name(k))+`<h3>${c1Name(k)}</h3></div>`}<ul class="wufacts">
+<li>${T('Demand: {a} to {b} units a day',{a:num(W('G_DEM_MIN')),b:num(W('G_DEM_MAX'))})}</li><li>${T('Lead time: {n} day',{n:W('G_LEAD')})}</li>
+${dry?`<li>${T('No expiry')}</li><li>${T('Holding: Rp{n} per unit per day',{n:num(W('G_HOLD_DRY'))})}</li>`:`<li>${T('Shelf life: {n} days. Unsold on day {m}: waste at Rp{c} a loaf',{n:W('G_BREAD_LIFE'),m:W('G_BREAD_LIFE')+1,c:num(W('G_BREAD_COST'))})}</li>`}
+<li>${T('Stockout: Rp{n} per unit short',{n:num(W('G_STOCKOUT'))})}</li></ul>
+<div class="ctl"><span>${T('Order quantity')}</span>${seg(G_QTY_OPTIONS.map(x=>[x,num(x)]),p.q,v=>set('q',v))}</div>
+<div class="ctl"><span>${T('Safety stock')}</span>${seg(G_SS_OPTIONS.map(x=>[x,num(x)]),p.ss,v=>set('ss',v))}</div>
+<p class="wushelf">${T('On the shelf each morning')}: <b>${num(p.q)} + ${num(p.ss)} = ${num(p.q+p.ss)}</b> ${T('units')}</p></div>`;}
+VIEWS.c1policy=()=>`<div class="fade"><p class="lead pagelead">${T('Set one policy per product. It holds for all ten days. Each evening the store orders enough to open the next morning with order quantity + safety stock on the shelf.')}</p><div class="wu2">${c1Card('dry')}${c1Card('bread')}</div></div>`+navRow('▶ '+T('Run the round'),true,'A.c1Run()');
+VIEWS.c1run=()=>{const w=G.wu;if(!w.res)return pendingPage();
+  if(wuRunning()&&!viewing())return wuShell({eyebrow:T('Run · {n} trading days',{n:W('G_DAYS')}),title:T('The round'),ticks:w.res.days.map(d=>T('Day {d}',{d:d.day})),
+    hud:[['day',T('Trading day'),T('of {n}',{n:W('G_DAYS')})],['dry',c1Name('dry'),T('left at closing')],['bread',c1Name('bread'),T('left at closing')],['short',T('Stockouts'),T('units')],['waste',T('Waste'),T('units')]]});
+  return c1Results()+navRow(nextLbl(G.phase+1));};
+/* Stage: one bar per day per product. Bar = shelf at opening; tick = demand; red = demand not met; brown below the
+   axis = loaves thrown away that evening. */
+function c1Chart(k,res,upto){
+  const W0=440,H=190,base=130,sc=1.0/1.25,bw=30,gap=(W0-40-10*bw)/9;let s=`<svg viewBox="0 0 ${W0} ${H}" class="wuchart" role="img" aria-label="${esc(c1Name(k))}"><line class="wu-axis" x1="34" x2="${W0}" y1="${base}" y2="${base}"/>`;
+  for(const v of[50,100,150])s+=`<line class="wu-grid" x1="34" x2="${W0}" y1="${base-v*sc}" y2="${base-v*sc}"/><text class="wu-lab" x="28" y="${base-v*sc+4}" text-anchor="end">${v}</text>`;
+  res.days.forEach((d,i)=>{const f=clamp(upto-i,0,1);if(f<=0)return;const r=d[k],x=40+i*(bw+gap);
+    s+=`<rect class="wu-stock" x="${x}" y="${base-r.open*sc*f}" width="${bw}" height="${r.open*sc*f}"/>`;
+    if(f>=1){if(r.short)s+=`<rect class="wu-short" x="${x}" y="${base-d.demand*sc}" width="${bw}" height="${r.short*sc}"/>`;
+      s+=`<line class="wu-dem" x1="${x-3}" x2="${x+bw+3}" y1="${base-d.demand*sc}" y2="${base-d.demand*sc}"/>`;
+      if(r.waste)s+=`<rect class="wu-waste" x="${x}" y="${base+2}" width="${bw}" height="${r.waste*sc}"/>`;}
+    s+=`<text class="wu-lab" x="${x+bw/2}" y="${H-4}" text-anchor="middle">${d.day}</text>`;});
+  return s+'</svg>';}
+const c1Legend=()=>`<div class="legend"><span><i class="lg wu-stock"></i>${T('on the shelf at opening')}</span><span><i class="lg wu-dem"></i>${T('demand')}</span><span><i class="lg wu-short"></i>${T('demand not met')}</span><span><i class="lg wu-waste"></i>${T('thrown away')}</span></div>`;
+WU_PAINT[1]=f=>{const res=G.wu.res,up=f*res.days.length,done=res.days.slice(0,Math.floor(up));
+  const st=$('wu-stage');if(st)st.innerHTML=`<div class="wu2">${['dry','bread'].map(k=>`<div><h4>${c1Name(k)}</h4>${c1Chart(k,res,up)}</div>`).join('')}</div>${c1Legend()}`;
+  wuSet('day',num(Math.min(res.days.length,Math.floor(up)+1)));const lc=done[done.length-1];wuSet('dry',lc?num(lc.dry.left):'–');wuSet('bread',lc?num(lc.bread.left):'–');
+  wuSet('short',num(sum(done.map(d=>d.dry.short+d.bread.short))));wuSet('waste',num(sum(done.map(d=>d.bread.waste))));};
+WU_END[1]=()=>{const r=G.wu.res;return wuEndCard(T('Day {d} · the round is over',{d:W('G_DAYS')}),T('Round complete'),[[T('Stockouts'),num(r.dry.stockouts+r.bread.stockouts)],[T('Waste'),num(r.bread.waste)]]);};
+WU_LED[1]=()=>{const r=G.wu.res;return{stockouts:r.dry.stockouts+r.bread.stockouts,waste:r.bread.waste};};
+function c1Results(){const r=G.wu.res,b=G.wu.base,rp=n=>fmtRp(n),days=W('G_DAYS');
+  const col=k=>{const x=r[k],y=b[k],p=r.pol[k],dry=k==='dry',cost=dry?'holdCost':'wasteCost';
+    const lossRow=dry?[T('Holding'),T('{n} unit-days × Rp{c}',{n:num(x.holdUnits),c:num(W('G_HOLD_DRY'))}),rp(x.holdCost)]:[T('Waste'),T('{n} loaves × Rp{c}',{n:num(x.waste),c:num(W('G_BREAD_COST'))}),rp(x.wasteCost)];
+    const diff=y.total-x.total;
+    return`<div class="card wuprod"><div class="phead">${C1_ICON[k](c1Name(k))}<h3>${c1Name(k)}</h3></div>${calcTable([
+      [T('On the shelf each morning'),`${num(p.q)} + ${num(p.ss)}`,T('{n} units',{n:num(p.q+p.ss)})],
+      [T('Demand over {n} days',{n:days}),T('{s} sold',{s:num(x.sold)}),T('{n} units',{n:num(sum(r.demand))})],
+      [T('Stockouts'),T('{n} units × Rp{c}',{n:num(x.stockouts),c:num(W('G_STOCKOUT'))}),rp(x.shortCost)],lossRow,
+      [T('Total cost'),'',`<b>${rp(x.total)}</b>`,'tot']])}
+<h4>${T('What your safety stock did')}</h4><table class="wucalc"><tr><th></th><th>${T('Safety stock {n}',{n:num(p.ss)})}</th><th>${T('Safety stock 0')}</th></tr>
+<tr><td>${T('Stockouts')}</td><td>${num(x.stockouts)}</td><td>${num(y.stockouts)}</td></tr><tr><td>${dry?T('Holding'):T('Waste')}</td><td>${dry?T('{n} unit-days',{n:num(x.holdUnits)}):num(x.waste)}</td><td>${dry?T('{n} unit-days',{n:num(y.holdUnits)}):num(y.waste)}</td></tr>
+<tr class="tot"><td>${T('Total cost')}</td><td>${rp(x.total)}</td><td>${rp(y.total)}</td></tr></table>
+<p class="wuverdict ${diff>0?'good':diff<0?'bad':''}">${p.ss===0?T('You held no safety stock.'):diff>=0?T('The buffer saved {x}.',{x:rp(diff)}):T('The buffer cost {x}.',{x:rp(-diff)})}</p></div>`;};
+  const rows=r.days.map(d=>`<tr><td>${d.day}</td><td>${num(d.demand)}</td><td>${num(d.dry.open)}</td><td>${num(d.dry.short)}</td><td>${num(d.dry.left)}</td><td>${num(d.bread.open)}</td><td>${num(d.bread.short)}</td><td>${num(d.bread.waste)}</td></tr>`).join('');
+  return`<div class="fade"><div class="wu2">${col('dry')}${col('bread')}</div>${card(`${c1Chart('dry',r,days).replace('wuchart','wuchart sm')}${c1Chart('bread',r,days).replace('wuchart','wuchart sm')}${c1Legend()}<details><summary>${T('Day by day')}</summary><table><tr><th>${T('Day')}</th><th>${T('Demand')}</th><th>${c1Name('dry')}: ${T('opening')}</th><th>${T('short')}</th><th>${T('left at closing')}</th><th>${c1Name('bread')}: ${T('opening')}</th><th>${T('short')}</th><th>${T('thrown away')}</th></tr>${rows}</table></details>`,'wudays')}</div>`;}
 
 /* ---------- Set-up page 1: priorities + posture ---------- */
 const head=(n,t)=>`<h2><span class="num">${n}</span>${t}</h2>`;
@@ -2369,6 +2503,13 @@ const A={
   toggleDims(){G.showDims=!G.showDims;render();},
   restart(force){if(force||typeof confirm==='undefined'||confirm(T('Restart from the brief? This run will be lost.'))){if(G.anim)G.anim.loop=false;wuStop();resetGame();render();}},
   nextChapter(){if(viewing()||G.chapter>=5)return;const n=G.chapter;G.chTimes[n]=Object.assign(G.chTimes[n]||{},{end:Date.now()});chapterCarry(n);startChapter(n+1);},
+  /* Warm-up chapters: policy edits, starting a run, the run controls */
+  wuPol(path,v){if(viewing())return;setPath(G.wu,path,v);render();},
+  c1Run(){if(viewing())return;G.wu.res=groceryRound(G.wu.pol);G.wu.base=groceryNoBuffer(G.wu.pol);wuStart(W('G_DAYS')*6000);G.phase++;render();},
+  wuToggle(){const a=G.wu&&G.wu.anim;if(!a)return;a.playing=!a.playing;const b=$('wu-play');if(b)b.textContent=playLabel(a.playing);},
+  wuSpeed(v){const a=G.wu&&G.wu.anim;if(!a)return;a.speed=v;document.querySelectorAll('#wuroot .simctl .seg button').forEach(b=>b.classList.toggle('on',b.textContent===v+'×'));},
+  wuSkip(){const a=G.wu&&G.wu.anim;if(!a||a.done)return;a.t=a.dur;a.done=true;},
+  wuDone(){const a=G.wu&&G.wu.anim;if(!a)return;a.finished=true;a.loop=false;G.wu.led=WU_LED[G.chapter]();render();},
   skipWarmups(){if(!ALLOW_SKIP_WARMUPS||G.chapter>=3)return;G.carry.skipped=true;startChapter(3);},
   downloadLog(){const log={decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(log,null,2)],{type:'application/json'}));a.download='mbg-run-'+seedHex('final')+'.json';a.click();},
@@ -2387,6 +2528,7 @@ function render(){
   G.lastKey=key;
   if($('xpl'))mountExplainer();else if(typeof XPL!=='undefined'&&(XPL.playing||XPL.i>=0)){xplStopTimers();XPL.playing=false;}
   if($('simroot'))mountSim();
+  if($('wuroot'))wuMount();
   if(G.cuPending){G.cuPending=false;runCountUps();}
 }
 if(typeof document!=='undefined')document.addEventListener('keydown',e=>{if(e.key==='Escape'&&G&&G.ui&&G.ui.regModal)A.closeRegency();});
@@ -2562,6 +2704,50 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id) and Spanish (es). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"Jump to the end of the run":{id:"Lompat ke akhir pengantaran",es:"Saltar al final de la ronda"},
+"See the results →":{id:"Lihat hasilnya →",es:"Ver los resultados →"},
+"Dry goods":{id:"Barang kering",es:"Productos secos"},
+"Bread":{id:"Roti",es:"Pan"},
+"Demand: {a} to {b} units a day":{id:"Permintaan: {a} sampai {b} unit sehari",es:"Demanda: de {a} a {b} unidades al día"},
+"Lead time: {n} day":{id:"Waktu tunggu pesanan: {n} hari",es:"Plazo de entrega: {n} día"},
+"No expiry":{id:"Tidak kedaluwarsa",es:"No caduca"},
+"Holding: Rp{n} per unit per day":{id:"Biaya simpan: Rp{n} per unit per hari",es:"Almacenaje: Rp{n} por unidad y día"},
+"Shelf life: {n} days. Unsold on day {m}: waste at Rp{c} a loaf":{id:"Masa simpan: {n} hari. Tidak terjual pada hari ke-{m}: terbuang, Rp{c} per roti",es:"Vida útil: {n} días. Sin vender el día {m}: desperdicio, a Rp{c} la pieza"},
+"Stockout: Rp{n} per unit short":{id:"Kehabisan stok: Rp{n} per unit yang kurang",es:"Rotura de stock: Rp{n} por unidad que falta"},
+"Order quantity":{id:"Jumlah pesanan",es:"Cantidad de pedido"},
+"Safety stock":{id:"Stok pengaman",es:"Stock de seguridad"},
+"On the shelf each morning":{id:"Di rak setiap pagi",es:"En el estante cada mañana"},
+"Set one policy per product. It holds for all ten days. Each evening the store orders enough to open the next morning with order quantity + safety stock on the shelf.":{id:"Tetapkan satu kebijakan per produk. Kebijakan ini berlaku sepuluh hari penuh. Setiap sore toko memesan cukup barang agar besok pagi rak berisi jumlah pesanan + stok pengaman.",es:"Fije una política por producto. Vale para los diez días. Cada tarde la tienda pide lo suficiente para abrir a la mañana siguiente con cantidad de pedido + stock de seguridad en el estante."},
+"Run the round":{id:"Jalankan putaran",es:"Jugar la ronda"},
+"Run · {n} trading days":{id:"Jalankan · {n} hari dagang",es:"Jugar · {n} días de venta"},
+"Trading day":{id:"Hari dagang",es:"Día de venta"},
+"on the shelf":{id:"di rak",es:"en el estante"},
+"on the shelf at opening":{id:"di rak saat buka",es:"en el estante al abrir"},
+"demand":{id:"permintaan",es:"demanda"},
+"demand not met":{id:"permintaan tak terpenuhi",es:"demanda no atendida"},
+"thrown away":{id:"dibuang",es:"tirado"},
+"Day {d} · the round is over":{id:"Hari {d} · putaran selesai",es:"Día {d} · la ronda ha terminado"},
+"Round complete":{id:"Putaran selesai",es:"Ronda completada"},
+"Holding":{id:"Biaya simpan",es:"Almacenaje"},
+"{n} unit-days × Rp{c}":{id:"{n} unit-hari × Rp{c}",es:"{n} unidades-día × Rp{c}"},
+"{n} loaves × Rp{c}":{id:"{n} roti × Rp{c}",es:"{n} piezas × Rp{c}"},
+"{n} units":{id:"{n} unit",es:"{n} unidades"},
+"Demand over {n} days":{id:"Permintaan selama {n} hari",es:"Demanda en {n} días"},
+"{s} sold":{id:"{s} terjual",es:"{s} vendidas"},
+"{n} units × Rp{c}":{id:"{n} unit × Rp{c}",es:"{n} unidades × Rp{c}"},
+"Total cost":{id:"Total biaya",es:"Coste total"},
+"What your safety stock did":{id:"Apa yang dilakukan stok pengaman Anda",es:"Lo que hizo su stock de seguridad"},
+"Safety stock {n}":{id:"Stok pengaman {n}",es:"Stock de seguridad {n}"},
+"Safety stock 0":{id:"Stok pengaman 0",es:"Stock de seguridad 0"},
+"{n} unit-days":{id:"{n} unit-hari",es:"{n} unidades-día"},
+"You held no safety stock.":{id:"Anda tidak menyimpan stok pengaman.",es:"No mantuvo stock de seguridad."},
+"The buffer saved {x}.":{id:"Penyangga menghemat {x}.",es:"El colchón ahorró {x}."},
+"The buffer cost {x}.":{id:"Penyangga menambah biaya {x}.",es:"El colchón costó {x}."},
+"Day by day":{id:"Hari demi hari",es:"Día a día"},
+"Demand":{id:"Permintaan",es:"Demanda"},
+"opening":{id:"saat buka",es:"al abrir"},
+"short":{id:"kurang",es:"faltan"},
+"left at closing":{id:"sisa saat tutup",es:"sobrante al cerrar"},
 "Chapters":{id:"Bab",es:"Capítulos"},
 "Chapter {n} of 5":{id:"Bab {n} dari 5",es:"Capítulo {n} de 5"},
 "Skip to Chapter 3 →":{id:"Lompat ke Bab 3 →",es:"Saltar al capítulo 3 →"},
@@ -3650,6 +3836,14 @@ function autoplay(scn){
     chains:G.world.chains.length,secondOrder:sum(G.world.chains.map(c=>c.second.length)),traps:trapReport().map(t=>t[0])};
 }
 function runScenarios(){const out={};for(const[k,s]of Object.entries(SCENARIOS))out[k]=autoplay(s);return out;}
+/* Autoplay per chapter: each runs the chapter's engine on a few preset decision sets and reports the results.
+   animSec is the run animation's length at 1× (it excludes the player's thinking time). */
+const CH_AUTOPLAY={
+  1:()=>{const pols={default:{dry:{q:100,ss:20},bread:{q:100,ss:20}},noBuffer:{dry:{q:100,ss:0},bread:{q:100,ss:0}},bufferDryOnly:{dry:{q:100,ss:20},bread:{q:100,ss:0}},bigBuffer:{dry:{q:120,ss:40},bread:{q:120,ss:40}}};
+    return{animSec:W('G_DAYS')*6,runs:Object.fromEntries(Object.entries(pols).map(([k,p])=>{const r=groceryRound(p);return[k,{dry:{stockouts:r.dry.stockouts,holdUnits:r.dry.holdUnits,cost:r.dry.total},bread:{stockouts:r.bread.stockouts,waste:r.bread.waste,cost:r.bread.total}}];}))};},
+  5:()=>({runs:runScenarios()}),
+};
+function autoplayChapter(n){const ch=G.chapter,out=CH_AUTOPLAY[n]?CH_AUTOPLAY[n]():{note:'no autoplay yet'};G.chapter=ch;return out;}
 function devStatus(){
   const has=n=>typeof document!=='undefined'&&document.fonts&&[...document.fonts].some(f=>f.family.replace(/["']/g,'')===n&&f.status==='loaded');
   const font=typeof document==='undefined'||!document.fonts?'Font status unavailable.':['Maison Neue','Maison Neue Extended'].map(n=>n+(has(n)?': installed and in use':': not installed, fallback showing')).join(' · ')+'. To embed the licensed files, see the @font-face note at the top of the style block.';
@@ -3657,12 +3851,13 @@ function devStatus(){
   return`<p class="mute">Typeface: ${font}</p><p class="mute">Language: ${LANG}. ${miss.length?`${miss.length} string(s) shown so far have no translation and fall back to English:</p><pre style="font-size:12px;white-space:pre-wrap">${esc(miss.join('\n'))}</pre>`:'Every string shown so far has a translation.</p>'}`;
 }
 function devPanel(){
-  const rows=Object.entries(PARAMS).map(([id,p])=>`<tr><td><code>${id}</code></td><td>${p.v}</td><td>${p.unit}</td><td><span class="tag ${p.src[0]}">${p.src}</span></td><td>${esc(p.note)}</td></tr>`).join('');
-  return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<div class="row"><label>Jump to chapter <select onchange="A.devJump(+this.value)">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n} · ${CHAPTER_PAGES[n].title}</option>`).join('')}</select></label><button onclick="A.devRun()">Autoplay Chapter 5 trap scenarios</button></div><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
+  const rows=Object.entries(Object.assign({},PARAMS,WARMUP)).map(([id,p])=>`<tr><td><code>${id}</code></td><td>${p.v}</td><td>${p.unit}</td><td><span class="tag ${p.src[0]}">${p.src}</span></td><td>${esc(p.note)}</td></tr>`).join('');
+  return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<div class="row"><label>Jump to chapter <select onchange="A.devJump(+this.value)">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n} · ${CHAPTER_PAGES[n].title}</option>`).join('')}</select></label><button onclick="A.devRun()">Autoplay Chapter 5 trap scenarios</button><label>Autoplay chapter <select id="devch">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n}</option>`).join('')}</select></label><button onclick="A.devChapter(+document.getElementById('devch').value)">Run</button></div><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
 }
 A.devRun=()=>{const ch=G.chapter,r=runScenarios();G.chapter=ch;resetGame();render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
 A.devJump=n=>startChapter(n);
-if(typeof window!=='undefined')window.MBG={get G(){return G;},PARAMS,SCENARIOS,autoplay,runScenarios,startChapter};
+A.devChapter=n=>{const r=autoplayChapter(n);if(n===5){G.chapter=5;resetGame();}render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
+if(typeof window!=='undefined')window.MBG={get G(){return G;},PARAMS,WARMUP,SCENARIOS,autoplay,runScenarios,startChapter,autoplayChapter};
 if(typeof document!=='undefined')render();
 </script>
 </body>
