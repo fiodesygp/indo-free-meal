@@ -655,6 +655,7 @@ body{padding-left:0}
 .wu-dot.cro{fill:var(--cost)}.wu-dot.sou{fill:var(--green-ink)}.legend .lg.wu-cro,.legend .lg.wu-sou{height:3px}
 .wu-load{fill:var(--line);background:var(--line)}.wu-wait{fill:var(--green-soft);background:var(--green-soft)}.wu-road{fill:var(--green-brand);background:var(--green-brand)}.wu-now{stroke:var(--bad);stroke-width:2;stroke-dasharray:4 3}
 .c2plan td{vertical-align:middle}.c2plan th{text-align:left!important}.c2plan td.mv{white-space:nowrap}.c2plan .seg button{font:var(--t-caption);padding:4px 8px}
+.maps>div:only-child{max-width:520px}
 .bridgegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:640px){.bridgegrid{grid-template-columns:1fr}}
 @media (max-width:640px){
   #nav{padding:var(--sp-2) var(--sp-2) 0}
@@ -981,10 +982,13 @@ function chapterDefaults(){
   if(n===1)G.wu={pol:{dry:{q:100,ss:20},bread:{q:100,ss:20}}};  // estimate: a round-number starting policy
   if(n===2)G.wu={plan:{trucks:2,order:['A','B','C'],swap:{A:false,B:false,C:false}},rounds:{}};  // round 2 starts from round 1's plan
   if(n===3)G.wu={plan:{runs:3,runMenu:[0,1,2,3].map(()=>({m:'M1',a:'none'}))}};  // estimate: three runs, one menu
+  if(n===4){G.dec.posture='balanced';  // ramp speed is a Chapter 5 decision
+    const m3=G.carry.menu3;if(m3&&m3.length)G.dec.menu=WEEK().map(d=>clone(m3[d%m3.length]));}  // Chapter 3's run menus become the week
 }
 /* Chapter end: what a finished chapter hands forward. */
 function chapterCarry(n){
   if(n===3){const p=G.wu.plan;G.carry.menu3=clone(p.runMenu.slice(0,p.runs));}
+  if(n===4){const rid=G.dec.regions[0];if(rid)G.carry.ch4={rid,regency:G.dec.regency[rid],radius:G.dec.radius[rid],siting:clone(G.dec.siting[rid]),arch:G.dec.sourcing.arch,menu:clone(G.dec.menu)};}
 }
 resetGame();
 
@@ -1186,7 +1190,8 @@ function defaultBudget(plan,A){
 function rampAt(post,p){const t=(p-1)/2,i=Math.floor(t),f=t-i,r=post.ramp;return i>=r.length-1?r[r.length-1]:r[i]+(r[i+1]-r[i])*f;}
 function defaultPlan(y){
   const post=POSTURES.rows.find(p=>p.id===G.dec.posture)||POSTURES.rows[1];const regs=G.dec.regions;const w=G.world;
-  if(y===1)return{budget:G.dec.budget?clone(G.dec.budget):null,activation:rampAt(post,1),inspectors:Object.fromEntries(regs.map(r=>[r,post.inspectors])),training:Object.fromEntries(regs.map(r=>[r,false])),slhs:post.slhs,audit:false,extraFleet:Object.fromEntries(regs.map(r=>[r,0])),batch:Object.fromEntries(regs.map(r=>[r,G.dec.delivery.batch])),lastRun:G.dec.delivery.lastRun,menu:clone(G.dec.menu),rails:G.dec.sourcing.rails,receipts:G.dec.sourcing.receipts};
+  /* Chapter 4: every planned kitchen opens (the ramp is a Chapter 5 decision); partner viability still caps it. */
+  if(y===1)return{budget:G.dec.budget?clone(G.dec.budget):null,activation:G.chapter===4?1:rampAt(post,1),inspectors:Object.fromEntries(regs.map(r=>[r,post.inspectors])),training:Object.fromEntries(regs.map(r=>[r,false])),slhs:post.slhs,audit:false,extraFleet:Object.fromEntries(regs.map(r=>[r,0])),batch:Object.fromEntries(regs.map(r=>[r,G.dec.delivery.batch])),lastRun:G.dec.delivery.lastRun,menu:clone(G.dec.menu),rails:G.dec.sourcing.rails,receipts:G.dec.sourcing.receipts};
   const p=clone(G.plans[y-2]);
   p.activation=Math.max(p.activation,rampAt(post,y));
   for(const rid of Object.keys(w.regionFix))p.batch[rid]='staggered';
@@ -1267,6 +1272,7 @@ function beginYear(y,plan){
    Wet season is October to March, so semester 1 (Jul–Dec) gets its weather late and semester 2 (Jan–Jun) early.
    Rain slows every route; a flood cuts some kitchens off and slows the rest; a landslide blocks one kitchen's route. */
 function drawWeather(ctx){
+  if(!CH().events)return[];  // Chapter 4 runs one clean semester: no weather
   const r=rngFrom(fnv(decisionVector('wx'+ctx.y))),D=P('PERIOD_DAYS'),s1=semOf(ctx.y)===1,out=[];
   const when=()=>Math.round(s1?D*(.42+r()*.5):D*(.03+r()*.5));
   for(const rid of G.dec.regions){
@@ -1282,6 +1288,7 @@ function drawWeather(ctx){
   return out.sort((a,b)=>a.day-b.day);
 }
 function drawPreEvents(ctx){
+  if(!CH().events)return[];  // Chapter 4: no mid-semester events (they belong to Chapter 5)
   const r=ctx.preRng,evs=[],src=SOURCING.rows.find(s=>s.id===G.dec.sourcing.arch);
   for(const rid of G.dec.regions)if(ctx.activeCount[rid]&&r()<src.supplierFailP*PF()){evs.push({type:'supplier',rid});break;}
   for(const rid of G.dec.regions)if(ctx.activeCount[rid]&&r()<(1-region(rid).roadReliability)*P('ROAD_P_SCALE')*PF()){evs.push({type:'road',rid});break;}
@@ -1368,6 +1375,7 @@ function simulateYear(ctx){
 }
 
 function drawPostEvents(ctx){
+  if(!CH().events)return[];  // Chapter 4: incidents are counted, but suspension and redirects belong to Chapter 5
   const r=ctx.simRng,evs=[],w=G.world,src=SOURCING.rows.find(s=>s.id===G.dec.sourcing.arch);
   if(ctx.incidents.length)evs.push({type:'incident',list:ctx.incidents});
   const major=ctx.incidents.some(i=>i.major);
@@ -1942,7 +1950,9 @@ const BRIEF_ITEMS={
   unit:()=>`<div class="card bitem wide"><div class="bhead">${ICONS.kitchen(T('The unit'))}<div class="big">${num(2500)}</div></div><h3>${T('The unit')}</h3><p>${T('A {sppg} cooks 2,500 portions a day, or 3,000 with a {cook}, and serves schools within <b>6 km and 30 minutes</b>.',{sppg:g('SPPG',T('regional kitchen (SPPG)')),cook:g('BNSP',T('certified cook'))})}</p><div class="why"><h4>${T('Why regional kitchens, not a kitchen in every school?')}</h4><p>${T('The programme chose a central-kitchen model built on buying ingredients locally, to strengthen the rural economy and smallholder farming, and it expects the kitchens to create jobs in food preparation and logistics. The fact sheet gives those reasons; it does not claim that central kitchens are cheaper or safer.')}</p><p>${T('The cost is the subject of this simulation: a meal cooked far from the child has to travel, and its clock starts at the kitchen, not at the school.')}</p><p>${T('Compare the United States, where most schools prepare or finish meals on site. In a national survey of school districts, 45% used on-site kitchens and another 41% combined a central kitchen with on-site preparation; only 14% relied on central kitchens alone.')}</p><p class="mute hint">${T('Sources: UNICEF Indonesia fact sheet, July 2025; Nettles et al., Journal of the American Dietetic Association, 2005.')}</p></div></div>`,
   scale:()=>`<div class="card bitem wide"><div class="bhead">${ICONS.scale(T('The scale'))}<div class="big">${T('57M')}</div></div><h3>${T('The scale')}</h3><p>${T('Nationally, about 27,000 kitchens feed about 57 million people a day (October 2026), against an original target of 82.9 million.')}</p></div>`,
 };
-VIEWS.brief=()=>`${explainerHtml()}<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="eyebrow">${T('Briefing · about two minutes')}</p><p class="kicker">Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</p><h2>${gameTitle()}</h2></div></div><p class="tagline">${T('Every meal has four hours to reach a child. Build the network that wins the race, for two years, on a budget.')}</p>
+/* Chapter 4's brief: the unit, and who is fed and when (calendar and beneficiary mix); background optional. */
+function briefCh4(){return chapterHero(4,T(CH_TAG[4]))+`<div class="bgrid fade">${BRIEF_ITEMS.unit()}${BRIEF_ITEMS.who()}</div><details class="more card"><summary><b>${T('More context')}</b> <span class="mute">${T('optional · why the programme exists')}</span></summary>${briefBackground()}</details>`+navRow(nextLbl(G.phase+1));}
+VIEWS.brief=()=>G.chapter===4?briefCh4():`${explainerHtml()}<div class="card hero fade"><div class="herotitle">${logoSvg('big')}<div><p class="eyebrow">${T('Briefing · about two minutes')}</p><p class="kicker">Makan Bergizi Gratis${LANG==='id'?'':` · ${T('Free Nutritious Meals')}`}</p><h2>${gameTitle()}</h2></div></div><p class="tagline">${T('Every meal has four hours to reach a child. Build the network that wins the race, for two years, on a budget.')}</p>
 <p class="lead">${T('You are setting up the school channel of Indonesia\'s free meals programme, {mbg}, in two pilot {regencies}, for two operating years, played as four semesters. Your job is physical flow: food from a kitchen to a child before it can harm them, under a budget and a clock.',{mbg:g('MBG',T('Makan Bergizi Gratis (Free Nutritious Meals)')),regencies:g('kabupaten',T('regencies'))})}</p></div>
 ${missionCard()}<details class="more card"><summary><b>${T('More context')}</b> <span class="mute">${T('optional · background, and four facts the simulation is built on')}</span></summary>${briefBackground()}<h3 class="four">${T('Four things to know')}</h3>
 <div class="bgrid fade">
@@ -1960,6 +1970,7 @@ const CH_TAG={
   1:'One shop, ten trading days, two products on the same shelf. Set an ordering policy for each, then watch the round play out.',
   2:'One bakery, fifteen cafés, two mornings. Plan the trucks and the runs, then watch them go.',
   3:'One school-meal kitchen, one morning, up to 2,500 children.',
+  4:'One regency, one semester. You place the kitchens, size them, and choose who supplies them.',
 };
 VIEWS.c1brief=()=>chapterHero(1,T(CH_TAG[1]))+navRow(nextLbl(G.phase+1));
 VIEWS.c2brief=()=>chapterHero(2,T(CH_TAG[2]))+navRow(nextLbl(G.phase+1));
@@ -2190,7 +2201,7 @@ VIEWS.setup1=()=>`<div class="fade">${secPriorities()}${secPosture()}</div>`+nav
 
 /* ---------- Set-up page 2: regions, regencies, sourcing, delivery ---------- */
 const nodeIcon=id=>{const n={many:9,mixed:4,few:2}[id],r={many:3.2,mixed:5,few:7}[id];let s='<svg viewBox="0 0 120 50" width="120" height="50">';for(let i=0;i<n;i++){const y=6+i*38/(n-1);s+=`<line x1="18" y1="${y}" x2="100" y2="25" stroke="#b9b4a8"/><circle cx="18" cy="${y}" r="${r}" fill="#9A5B00"/>`;}return s+'<rect x="94" y="19" width="12" height="12" rx="2" fill="#007D0E"/></svg>';};
-function secRegions(){const left=2-G.dec.regions.length;return card(`${head(1,T('Pilot provinces'))}<p class="lead">${T('Choose two provinces on the map or from the cards. Inside each you will then pick one of three candidate {regencies}. Provinces are real; the regencies are invented.',{regencies:g('kabupaten',T('regencies'))})}</p>${indoMap()}
+function secRegions(){const nR=CH().regions,left=nR-G.dec.regions.length;return card(`${head(1,T(nR===1?'Pilot province':'Pilot provinces'))}<p class="lead">${nR===1?T('Choose one province on the map or from the cards. Inside it you will then pick one of three candidate {regencies}. Provinces are real; the regencies are invented.',{regencies:g('kabupaten',T('regencies'))}):T('Choose two provinces on the map or from the cards. Inside each you will then pick one of three candidate {regencies}. Provinces are real; the regencies are invented.',{regencies:g('kabupaten',T('regencies'))})}</p>${indoMap()}
 <div class="opts small" style="margin-top:10px">${REGIONS.rows.map(r=>`<div class="opt ${G.dec.regions.includes(r.id)?'sel':''}" onclick="A.toggleRegion('${r.id}')"><h4>${PROV(r)}</h4>${LANG==='id'?'':`<p class="local">${r.local}</p>`}<p>${T('Candidate regencies')}: ${r.regencies.map(x=>KABBASE(x)).join(', ')}</p>${G.dec.regions.includes(r.id)?(G.ui.regPicked&&G.ui.regPicked[r.id]?`<p class="regline"><b>${T('Regency')}:</b> ${KAB(region(r.id))}</p><button class="ghost small" onclick="event.stopPropagation();A.openRegency('${r.id}')">${T('Change regency')}</button>`:`<button class="cuechip" onclick="event.stopPropagation();A.openRegency('${r.id}')">${T('Choose a regency')}</button>`):''}</div>`).join('')}</div>${left>0?`<p class="warn hint">${plural(left,'Select {n} more province.','Select {n} more provinces.')}</p>`:''}`);}
 function regencyPicker(rid){const p=REGIONS.rows.find(r=>r.id===rid),cur=G.dec.regency[rid]||0;
   return`<div class="opts small">${p.regencies.map((rg,i)=>`<div class="opt ${G.ui.regPicked&&G.ui.regPicked[rid]&&cur===i?'sel':''}" onclick="A.pickRegency('${rid}',${i})"><h4>${KAB(rg)}</h4><p class="local">${[LANG==='id'?'':'“'+T(rg.gloss)+'”',rg.remote?g('3T',T('remote (3T)')):''].filter(Boolean).join(' · ')||'&nbsp;'}</p><p>${T('{n} schoolchildren',{n:num(rg.students)})}</p><p>${T('Roads')}: ${T(rg.road)} · ${T(rg.dens)}</p><p>${T(rg.spacing)}</p><p>${T('Land price')}: ${T(rg.land)}</p></div>`).join('')}</div>`;}
@@ -2256,10 +2267,10 @@ ${timelineSvg(G.dec.menu,{batch:Object.fromEntries(G.dec.regions.map(r=>[r,d.bat
 const lockIcon=()=>`<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="11" width="12" height="9" rx="1.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></g></svg>`;
 function regencyModal(){const rid=G.ui.regModal;if(!rid||viewing()||!G.dec.regions.includes(rid))return'';const p=REGIONS.rows.find(r=>r.id===rid);
   return`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mdl-h" onclick="if(event.target===this)A.closeRegency()"><div class="mcard pop"><button class="mclose ghost" onclick="A.closeRegency()" aria-label="${esc(T('Close'))}">✕</button><p class="eyebrow">${PROV(p)}</p><h2 id="mdl-h">${T('Choose a regency')}</h2><p class="lead">${T('Three candidate regencies in {prov}. They differ in schoolchildren, roads, how spread out schools are, and land price. All are invented.',{prov:PROV(p)})}</p>${regencyPicker(rid)}</div></div>`;}
-VIEWS.setup2=()=>{const two=G.dec.regions.length===2;
-  return`<div class="fade">${secRegions()}</div>${regencyModal()}`+(two&&!setupReadyRegency()?`<p class="warn hint right-hint">${T('Choose a regency in each province to continue.')}</p>`:'')+navRow(nextLbl(G.phase+1),two&&setupReadyRegency());};
-VIEWS.kitchens=()=>`<div class="fade"><p class="lead pagelead">${T('Set up the kitchens in each regency. The defaults are a reasonable start; change them only if you want to.')}</p>${G.dec.regions.map((rid,i)=>regionPanel(rid,String(i+1))).join('')}</div>${regencyModal()}`+navRow(nextLbl(G.phase+1));
-VIEWS.sourcing=()=>`<div class="fade">${secSourcing(1)}${card(`<div class="locknote">${lockIcon()}<div><b>${T('Later in the run')}</b><p>${T('Controls against leakage unlock in semester 2. Delivery timing (cooking batches, who eats last, extra vehicles) unlocks in semester 3. Until then they run on sensible defaults.')}</p></div></div>`,'ghostcard')}</div>`+navRow(nextLbl(G.phase+1),!!G.dec.sourcing.arch);
+VIEWS.setup2=()=>{const two=G.dec.regions.length===CH().regions;
+  return`<div class="fade">${secRegions()}</div>${regencyModal()}`+(two&&!setupReadyRegency()?`<p class="warn hint right-hint">${CH().regions===1?T('Choose a regency to continue.'):T('Choose a regency in each province to continue.')}</p>`:'')+navRow(nextLbl(G.phase+1),two&&setupReadyRegency());};
+VIEWS.kitchens=()=>`<div class="fade"><p class="lead pagelead">${CH().regions===1?T('Set up the kitchens in your regency. The defaults are a reasonable start; change them only if you want to.'):T('Set up the kitchens in each regency. The defaults are a reasonable start; change them only if you want to.')}</p>${G.dec.regions.map((rid,i)=>regionPanel(rid,String(i+1))).join('')}</div>${regencyModal()}`+navRow(nextLbl(G.phase+1));
+VIEWS.sourcing=()=>`<div class="fade">${secSourcing(1)}${card(`<div class="locknote">${lockIcon()}<div>${G.chapter===4?`<b>${T('In Chapter 5')}</b><p>${T('Controls against leakage and delivery timing (cooking batches, who eats last, extra vehicles) come in Chapter 5. Here they run on sensible defaults.')}</p>`:`<b>${T('Later in the run')}</b><p>${T('Controls against leakage unlock in semester 2. Delivery timing (cooking batches, who eats last, extra vehicles) unlocks in semester 3. Until then they run on sensible defaults.')}</p>`}</div></div>`,'ghostcard')}</div>`+navRow(nextLbl(G.phase+1),!!G.dec.sourcing.arch);
 
 /* ---------- Set-up page: budget ----------
    The allocation is fixed from above; the player splits it into three envelopes. Meals funds service days,
@@ -2321,7 +2332,7 @@ VIEWS.setup3=()=>{const d=G.dec.delivery;if(G.ui.activeRun>4)G.ui.activeRun=0;
 ${timelineSvg(G.dec.menu,{batch:Object.fromEntries(G.dec.regions.map(r=>[r,d.batch])),lastRun:d.lastRun,extraFleet:{}})}
 <h3>${T('Your week')}</h3>${weekRows('dec',G.dec.menu)}<h3>${T('Menus')} <span class="mute" style="font-weight:400;font-size:12px">· ${T('assigning to {day}',{day:dayName(Math.min(4,G.ui.activeRun))})}</span></h3>${menuCatalogue('dec')}`)+`</div>`+navRow('▶ '+nextLbl(G.phase+1),setupReady(),'A.launch()');};
 function setupReadyRegency(){return G.dec.regions.every(r=>G.ui.regPicked&&G.ui.regPicked[r]);}
-function setupReady(){return!!G.dec.posture&&G.dec.regions.length===2&&!!G.dec.sourcing.arch&&setupReadyRegency();}
+function setupReady(){return!!G.dec.posture&&G.dec.regions.length===CH().regions&&!!G.dec.sourcing.arch&&setupReadyRegency();}
 
 /* ---------- Years ---------- */
 VIEWS.year=()=>{
@@ -2331,6 +2342,7 @@ VIEWS.year=()=>{
   return resultsView(c);
 };
 function planView(y){
+  if(G.chapter===4)return planViewCh4(y);
   const p=G.draft,w=G.world,prev=G.results[y-2],regs=G.dec.regions;
   if(!p.budget)p.budget=defaultBudget(p,allocationFor(y));
   const minAct=y>1?G.plans[y-2].activation:0;
@@ -2363,6 +2375,15 @@ ${mapsRow(rid=>regencyMap(rid,{ks:previewKs(rid,y,p.activation)}),true)}
 +card(`<details class="adjust"><summary><b>${T('Adjust details')}</b> <span class="mute">${T('optional · the weekly menu repeats unless you change it')}</span></summary><div class="menuline">${menuLine}</div>${details}</details>
 ${later.length?`<div class="locks">${later.map(([n,t])=>`<div class="lockrow">${lockIcon()}<span><b>${T('Unlocks in semester {n}',{n})}</b> · ${t}</span></div>`).join('')}</div>`:''}`)+`</div>`+navRow('▶ '+fullName(YEAR_PHASE0+y),true,'A.commitPlan()');
 }
+/* Chapter 4's semester plan has no decisions: every planned kitchen that finds a partner opens, and the budget is
+   split automatically (defaultBudget). Ramp speed and the split are Chapter 5 decisions. */
+function planViewCh4(y){const p=G.draft,w=G.world,A0=allocationFor(y);if(!p.budget)p.budget=defaultBudget(p,A0);const b=p.budget;
+  const kv=G.dec.regions.map(rid=>{const ks=w.kitchens.filter(k=>k.rid===rid),open=Math.ceil(ks.length*Math.min(p.activation,w.viable[rid]?1:P('NONVIABLE_ACTIVATION_CAP')));
+    return`<div>${T('Kitchens opening')} ${info('breakeven')}<br><b>${open}</b> ${T('of {n} planned',{n:ks.length})}</div>`;}).join('');
+  const notes=G.dec.regions.filter(rid=>!w.viable[rid]).map(()=>`<div class="note">${T('Partners here cannot pay back the build within the period BGN expects, so only {p} of planned kitchens find one.',{p:pct(P('NONVIABLE_ACTIVATION_CAP'))})}</div>`).join('');
+  return`<div class="fade">`+card(`<h2>${T('{p}: ready to run',{p:periodLabel(y)})}</h2><p class="lead">${T('No decisions this semester: your plan runs as set. Every planned kitchen that finds a partner opens, and the budget is split for you.')}</p>
+<div class="kv">${kv}<div>${T('Allocation this semester')} ${info('absorption')}<br><b>${fmtRp(A0)}</b></div>${BUDGET_KEYS.map(([k])=>`<div>${T(BUDGET_TEXT[k][0])}<br><b>${pct(b[k])}</b> · ${fmtRp(A0*b[k])}</div>`).join('')}</div>${notes}
+${mapsRow(rid=>regencyMap(rid,{ks:previewKs(rid,y,p.activation)}),true)}`)+`</div>`+navRow('▶ '+fullName(YEAR_PHASE0+y),true,'A.commitPlan()');}
 /* ---------- Menu photos ----------
    Real MBG trays from the book "Rasa Bhayangkara Nusantara" (Polri SPPG kitchens), supplied by the designer.
    Each is the closest real tray to the simulation's menu, not an exact match; the dish and kitchen are credited
@@ -2558,7 +2579,7 @@ function eventMaps(ev){
 function eventView(c){const ev=c.queue[0],t=EVENT_TEXT[ev.type](ev);return`<div class="card event fade ev-${ev.type}">${eventArt(ev)}<p class="mute">${periodLabel(c.y)} · ${T(c.stage==='pre'?'during the semester':'end of the semester')}</p><h2>${t.title}</h2><div>${t.body}</div>${eventMaps(ev)}<div class="opts" style="margin-top:12px">${t.opts.map(([id,l])=>`<div class="opt" onclick="A.choose('${id}')"><h4>${l}</h4></div>`).join('')}</div></div>`;}
 
 function pairChart(){
-  const R=G.results.filter(Boolean);const W=640,H=230,px=44,py=18;const xs=i=>px+i*(W-2*px)/(NP()-1),ys=v=>py+(100-v)*(H-2*py)/100;
+  const R=G.results.filter(Boolean);const W=640,H=230,px=44,py=18;const xs=i=>px+i*(W-2*px)/Math.max(1,NP()-1),ys=v=>py+(100-v)*(H-2*py)/100;
   const series=G.showDims?Object.keys(DIMS).map(d=>({id:d,label:T(DIMS[d]),col:{reach:'#00AA13',nutrition:'#6FD27B',safety:'#D9480F',plate:'#e09a83',fiscal:'#9A5B00',local:'#c9a85b'}[d],k:L=>L[d]}))
     :['delivered','exposure','cost'].map(id=>({id,label:T(PAIRS[id].label),col:{delivered:'#00AA13',exposure:'#D9480F',cost:'#9A5B00'}[id],k:L=>L[id]}));
   let s=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px" role="img" aria-label="${esc(T('Ledger over time'))}">`;
@@ -2668,7 +2689,7 @@ const A={
     const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);
       el.classList.remove('dragging');el.style.transform='';G.dec.values=[...list.children].map(c=>c.dataset.id);render();};
     window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);},
-  toggleRegion(id){if(viewing())return;const r=G.dec.regions,i=r.indexOf(id);if(i>=0){r.splice(i,1);if(G.ui.regPicked)delete G.ui.regPicked[id];G.ui.regModal=null;}else{if(r.length>=2){const gone=r.shift();if(G.ui.regPicked)delete G.ui.regPicked[gone];}r.push(id);G.ui.justPicked=id;G.ui.regModal=id;}
+  toggleRegion(id){if(viewing())return;const r=G.dec.regions,i=r.indexOf(id);if(i>=0){r.splice(i,1);if(G.ui.regPicked)delete G.ui.regPicked[id];G.ui.regModal=null;}else{if(r.length>=CH().regions){const gone=r.shift();if(G.ui.regPicked)delete G.ui.regPicked[gone];}r.push(id);G.ui.justPicked=id;G.ui.regModal=id;}
     for(const rid of r){if(G.dec.regency[rid]==null)G.dec.regency[rid]=0;if(G.dec.radius[rid]==null)G.dec.radius[rid]=6;if(!G.dec.siting[rid])G.dec.siting[rid]={target:2500,tenure:'build',fleet:2};}render();},
   pickRegency(rid,i){if(viewing())return;G.dec.regency[rid]=i;G.ui.regPicked=G.ui.regPicked||{};G.ui.regPicked[rid]=true;G.ui.regModal=null;render();const e=$('panel-'+rid);if(e&&e.scrollIntoView){e.scrollIntoView({behavior:'smooth',block:'start'});e.classList.add('flash');}},
   openRegency(rid){if(viewing())return;G.ui.regModal=rid;render();},
@@ -2907,6 +2928,18 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id) and Spanish (es). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"Pilot province":{id:"Provinsi percontohan",es:"Provincia piloto"},
+"Choose one province on the map or from the cards. Inside it you will then pick one of three candidate {regencies}. Provinces are real; the regencies are invented.":{id:"Pilih satu provinsi di peta atau dari kartu. Di dalamnya Anda lalu memilih satu dari tiga {regencies} kandidat. Provinsinya nyata; kabupatennya rekaan.",es:"Elija una provincia en el mapa o en las tarjetas. Dentro de ella elegirá después una de tres {regencies} candidatas. Las provincias son reales; las regencias, inventadas."},
+"Choose a regency to continue.":{id:"Pilih kabupaten untuk melanjutkan.",es:"Elija una regencia para continuar."},
+"Set up the kitchens in your regency. The defaults are a reasonable start; change them only if you want to.":{id:"Atur dapur di kabupaten Anda. Nilai bawaan sudah cukup baik untuk mulai; ubah hanya jika Anda mau.",es:"Configure las cocinas de su regencia. Los valores por defecto son un comienzo razonable; cámbielos solo si quiere."},
+"In Chapter 5":{id:"Di Bab 5",es:"En el capítulo 5"},
+"Controls against leakage and delivery timing (cooking batches, who eats last, extra vehicles) come in Chapter 5. Here they run on sensible defaults.":{id:"Pengendalian kebocoran dan pengaturan waktu pengantaran (gelombang memasak, siapa makan terakhir, kendaraan tambahan) datang di Bab 5. Di sini semuanya memakai pengaturan bawaan yang wajar.",es:"Los controles contra las fugas y el horario de reparto (tandas de cocina, quién come el último, vehículos extra) llegan en el capítulo 5. Aquí funcionan con valores razonables por defecto."},
+"optional · why the programme exists":{id:"opsional · mengapa program ini ada",es:"opcional · por qué existe el programa"},
+"One regency, one semester. You place the kitchens, size them, and choose who supplies them.":{id:"Satu kabupaten, satu semester. Anda menempatkan dapur, menentukan ukurannya, dan memilih pemasoknya.",es:"Una regencia, un semestre. Usted sitúa las cocinas, decide su tamaño y elige quién las abastece."},
+"Kitchens opening":{id:"Dapur yang dibuka",es:"Cocinas que abren"},
+"Partners here cannot pay back the build within the period BGN expects, so only {p} of planned kitchens find one.":{id:"Mitra di sini tidak bisa balik modal pembangunan dalam jangka waktu yang diharapkan BGN, jadi hanya {p} dapur yang direncanakan mendapat mitra.",es:"Aquí los socios no pueden recuperar la construcción en el plazo que espera la BGN, así que solo el {p} de las cocinas previstas encuentra uno."},
+"{p}: ready to run":{id:"{p}: siap dijalankan",es:"{p}: listo para jugar"},
+"No decisions this semester: your plan runs as set. Every planned kitchen that finds a partner opens, and the budget is split for you.":{id:"Tidak ada keputusan semester ini: rencana Anda berjalan apa adanya. Setiap dapur yang direncanakan dan mendapat mitra akan dibuka, dan anggaran dibagi untuk Anda.",es:"Este semestre no hay decisiones: su plan funciona tal como lo dejó. Abre cada cocina prevista que encuentre socio, y el presupuesto se reparte por usted."},
 "In a warehouse, a buffer of extra stock absorbs surprises. Cooked food cannot be buffered: every portion's four-hour clock starts when cooking ends.":{id:"Di gudang, stok penyangga menyerap kejutan. Makanan matang tidak bisa disangga: waktu empat jam setiap porsi mulai berjalan saat memasak selesai.",es:"En un almacén, un colchón de existencias absorbe las sorpresas. La comida cocinada no admite colchón: el reloj de cuatro horas de cada ración arranca al terminar de cocinar."},
 "Meal on run {n}":{id:"Menu pada pengantaran {n}",es:"Comida del viaje {n}"},
 "past the 4-hour limit":{id:"melewati batas 4 jam",es:"pasado el límite de 4 horas"},
@@ -4131,6 +4164,12 @@ const CH_AUTOPLAY={
   3:()=>{const M=(...ids)=>[0,1,2,3].map(i=>({m:ids[Math.min(i,ids.length-1)],a:'none'})),plans={'3 runs, fried chicken':{runs:3,runMenu:M('M1')},'4 runs, fried chicken':{runs:4,runMenu:M('M1')},
       '3 runs, coconut gravy':{runs:3,runMenu:M('M2')},'4 runs, gravy early, dry pack last':{runs:4,runMenu:M('M2','M2','M1','M7')},'2 runs, gravy':{runs:2,runMenu:M('M2')},'1 run':{runs:1,runMenu:M('M2')}};
     return{runs:Object.fromEntries(Object.entries(plans).map(([k,p])=>{const o=morningOps(p);return[k,{fed:o.fed,held:o.runs.map(r=>Math.round(r.hold)),S:o.runs.map(r=>+r.S.toFixed(2)),risk:Math.round(o.risk),reach:Math.round(o.reach),nutrition:Math.round(o.nutrition),safety:Math.round(o.safety),animSec:c3End(o)*C3_MS_PER_MIN/1000}];}))};},
+  4:()=>{const one=(rid,ri,siting,arch)=>{G.chapter=4;resetGame();setChapter(4);Object.assign(G.dec,{regions:[rid],regency:{[rid]:ri},radius:{[rid]:6},siting:{[rid]:siting},sourcing:{arch,rails:false,receipts:false}});
+      initWorld();const plan=defaultPlan(1);G.plans[0]=plan;beginYear(1,plan);const L=G.results[0].ledger,rp=regionPlan(rid);
+      return{kitchens:rp.n,open:G.results[0].rows.filter(r=>r.status==='active').length,viable:rp.viable,payback:+rp.payback.toFixed(2),runs:rp.runs,events:G.results[0].events.length,incidents:G.results[0].incidents.length,
+        delivered:Math.round(L.delivered),exposure:Math.round(L.exposure),cost:Math.round(L.cost),absorption:+L.absorption.toFixed(2)};};
+    return{animSec:P('PERIOD_DAYS')/SIM.DAYS_PER_SEC,runs:{'Central Java, build':one('JT',0,{target:2500,tenure:'build',fleet:2},'mixed'),'West Kalimantan, rent':one('KB',0,{target:2500,tenure:'rent',fleet:2},'many'),
+      'Papua hamlets, build (non-viable)':one('PA',0,{target:1000,tenure:'build',fleet:1},'few'),'Southeast Sulawesi, 3,000 a day':one('ST',1,{target:3000,tenure:'build',fleet:2},'mixed')}};},
   5:()=>({runs:runScenarios()}),
 };
 function autoplayChapter(n){const ch=G.chapter,out=CH_AUTOPLAY[n]?CH_AUTOPLAY[n]():{note:'no autoplay yet'};G.chapter=ch;return out;}
@@ -4146,7 +4185,7 @@ function devPanel(){
 }
 A.devRun=()=>{const ch=G.chapter,r=runScenarios();G.chapter=ch;resetGame();render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
 A.devJump=n=>startChapter(n);
-A.devChapter=n=>{const r=autoplayChapter(n);if(n===5){G.chapter=5;resetGame();}render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
+A.devChapter=n=>{const ch=G.chapter,r=autoplayChapter(n);if(n>=4)startChapter(ch);else render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
 if(typeof window!=='undefined')window.MBG={get G(){return G;},PARAMS,WARMUP,SCENARIOS,autoplay,runScenarios,startChapter,autoplayChapter};
 if(typeof document!=='undefined')render();
 </script>
