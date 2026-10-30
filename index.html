@@ -651,6 +651,10 @@ body{padding-left:0}
 .wu-stock{fill:var(--green-soft-2);background:var(--green-soft-2)}.wu-short{fill:var(--bad);background:var(--bad)}.wu-waste{fill:var(--cost);background:var(--cost)}
 .wu-dem{stroke:var(--ink);stroke-width:2.5;background:var(--ink)}.wu-axis{stroke:var(--mute)}.wu-grid{stroke:var(--line)}.wu-lab{fill:var(--mute);font:var(--t-caption)}
 .legend .lg.wu-dem{height:3px}
+.wu-cro{fill:none;stroke:var(--cost);stroke-width:2.5;background:var(--cost)}.wu-sou{fill:none;stroke:var(--green-ink);stroke-width:2.5;background:var(--green-ink)}
+.wu-dot.cro{fill:var(--cost)}.wu-dot.sou{fill:var(--green-ink)}.legend .lg.wu-cro,.legend .lg.wu-sou{height:3px}
+.wu-load{fill:var(--line)}.wu-wait{fill:var(--green-soft)}.wu-road{fill:var(--green-brand)}.wu-now{stroke:var(--bad);stroke-width:2;stroke-dasharray:4 3}
+.c2plan td{vertical-align:middle}.c2plan th{text-align:left!important}.c2plan td.mv{white-space:nowrap}.c2plan .seg button{font:var(--t-caption);padding:4px 8px}
 .bridgegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4)}@media(max-width:640px){.bridgegrid{grid-template-columns:1fr}}
 @media (max-width:640px){
   #nav{padding:var(--sp-2) var(--sp-2) 0}
@@ -932,7 +936,28 @@ const WARMUP = {
   G_STOCKOUT:{v:1000,unit:'Rp/unit',src:'estimate',note:'Penalty per unit of demand not met. The spec gave it for dry goods; bread uses the same value (agreed).'},
   G_BREAD_LIFE:{v:2,unit:'days',src:'estimate',note:'A loaf can be sold on its delivery day and the next; unsold on day 3, it is waste.'},
   G_BREAD_COST:{v:3000,unit:'Rp/unit',src:'estimate',note:'Unit cost of bread, lost in full on a wasted loaf.'},
+  // ---- Chapter 2: bakery (estimates). Age at delivery on run i = load + leg + (i − 1) × round trip, as in MBG.
+  B_LOAD_MIN:{v:30,unit:'min',src:'estimate',note:'Loading the trucks after the bake completes (t = 0).'},
+  B_LEG_MIN:{v:30,unit:'min',src:'estimate',note:'Drive to the cafés. Run 1 arrives at 30 + 30 = 60 min, mirroring MBG\'s 110 min.'},
+  B_TRIP_MIN:{v:60,unit:'min',src:'estimate',note:'Each later run waits one round trip for the trucks to come back.'},
+  B_CAFES_PER_TRUCK:{v:5,unit:'cafés/truck/run',src:'estimate',note:'One group of five cafés fills a truck.'},
+  B_CAFE_ORDER:{v:1e6,unit:'Rp/café',src:'estimate',note:'Value of one café\'s morning order (croissants + sourdough).'},
+  B_CROIS_LAM:{v:120,unit:'min',src:'estimate',note:'Croissant freshness: full until λ…'},
+  B_CROIS_H:{v:60,unit:'min',src:'estimate',note:'…then halves every h minutes.'},
+  B_SOUR_LAM:{v:360,unit:'min',src:'estimate',note:'Sourdough freshness lag λ.'},
+  B_SOUR_H:{v:180,unit:'min',src:'estimate',note:'Sourdough freshness half-life h.'},
+  B_SWAP_VALUE:{v:0.6,unit:'share',src:'estimate',note:'A café accepts sourdough in place of croissants at 60% of the croissant value.'},
+  B_TRUCK_FEE:{v:1.25e6,unit:'Rp/truck/round',src:'estimate',note:'Set so a truck that saves a third run breaks even against croissants on that run: 5 cafés × Rp500,000 of croissants × (1 − 0.5^((180 − 120)/60)) = Rp1,250,000.'},
 };
+/* Chapter 2 café groups: each group of five cafés is one truckload. crois = croissants' share of the order value
+   (estimate). The neighbour's group arrives in round 2 when its bakery's oven fails. */
+const CAFE_GROUPS={
+  A:{label:'Breakfast cafés',crois:0.8},
+  B:{label:'Corner cafés',crois:0.5},
+  C:{label:'Lunch cafés',crois:0.2},
+  N:{label:'Next-door bakery\'s cafés',crois:0.5},
+};
+const B_TRUCK_OPTIONS=[1,2,3];
 const W = id => { if (!(id in WARMUP)) throw new Error('Unknown warm-up param ' + id); return WARMUP[id].v; };
 const G_QTY_OPTIONS=[80,90,100,110,120], G_SS_OPTIONS=[0,10,20,30,40];  // estimate: round-number choices
 
@@ -954,6 +979,7 @@ function resetGame(){
 function chapterDefaults(){
   const n=G.chapter;
   if(n===1)G.wu={pol:{dry:{q:100,ss:20},bread:{q:100,ss:20}}};  // estimate: a round-number starting policy
+  if(n===2)G.wu={plan:{trucks:2,order:['A','B','C'],swap:{A:false,B:false,C:false}},rounds:{}};  // round 2 starts from round 1's plan
 }
 /* Chapter end: what a finished chapter hands forward. */
 function chapterCarry(n){}
@@ -1439,6 +1465,28 @@ function groceryRound(pol){
 /* The same round with no safety stock: what the buffer bought, product by product. */
 function groceryNoBuffer(pol){return groceryRound({dry:{q:pol.dry.q,ss:0},bread:{q:pol.bread.q,ss:0}});}
 
+/* ---- Chapter 2: bakery, one morning per round (pure) ----
+   Freshness is compS(), the same lag-then-halving curve as meal safety: S(t) = 1 for t ≤ λ, else 0.5^((t − λ)/h).
+   Groups go out in the player's order, `trucks` groups per run. extra = the next-door bakery's group, which joins
+   after loading and so rides a new run after the last planned one. A swapped group gets sourdough instead of
+   croissants, worth B_SWAP_VALUE of the croissant value. Delivered = (sellable value − truck hire) ÷ order value;
+   Freshness lost = value lost to age ÷ order value. */
+const CROISSANT=()=>({lam:W('B_CROIS_LAM'),h:W('B_CROIS_H')}),SOURDOUGH=()=>({lam:W('B_SOUR_LAM'),h:W('B_SOUR_H')});
+const bakeryAge=i=>W('B_LOAD_MIN')+W('B_LEG_MIN')+(i-1)*W('B_TRIP_MIN');
+function bakeryRound(plan,extra){
+  const T0=plan.trucks,sw=W('B_SWAP_VALUE'),gs=plan.order.map(id=>({id,swap:!!plan.swap[id]})),runs=[];
+  for(let i=0;i<gs.length;i+=T0)runs.push(gs.slice(i,i+T0));
+  if(extra)runs.push([{id:'N',swap:!!extra.swap,extra:true}]);
+  let ordered=0,sell=0,lostF=0,lostS=0;
+  const out=runs.map((grp,k)=>{const i=k+1,t=bakeryAge(i),Sc=compS(CROISSANT(),t),Ss=compS(SOURDOUGH(),t);
+    const rows=grp.map(g=>{const v=W('B_CAFES_PER_TRUCK')*W('B_CAFE_ORDER'),cv=v*CAFE_GROUPS[g.id].crois,sv=v-cv;
+      const r=g.swap?{sell:cv*sw*Ss+sv*Ss,lost:(cv*sw+sv)*(1-Ss),swapLoss:cv*(1-sw)}:{sell:cv*Sc+sv*Ss,lost:cv*(1-Sc)+sv*(1-Ss),swapLoss:0};
+      ordered+=v;sell+=r.sell;lostF+=r.lost;lostS+=r.swapLoss;return Object.assign({id:g.id,swap:g.swap,extra:!!g.extra,value:v,cv,sv},r);});
+    return{i,t,Sc,Ss,rows};});
+  const hire=T0*W('B_TRUCK_FEE');
+  return{plan:clone(plan),extra:extra?clone(extra):null,runs:out,ordered,sell,lostFresh:lostF,lostSwap:lostS,hire,delivered:(sell-hire)/ordered,lost:lostF/ordered};
+}
+
 /* ============ SECTION 3 · UI ============ */
 /* ---------- Language ----------
    Every player-facing string goes through T(english, vars). English is the source text; Bahasa Indonesia ('id')
@@ -1903,24 +1951,30 @@ function wuStop(){if(G&&G.wu&&G.wu.anim)G.wu.anim.loop=false;}
    The result is computed before the animation starts, so the animation is display only. Each chapter supplies
    WU_PAINT[n](f) to redraw its stage at progress f in [0,1], WU_END[n]() for the end card, and WU_LED[n]() for the
    ledger values once the run is seen. */
-const WU_PAINT={},WU_END={},WU_LED={};
+const WU_PAINT={},WU_END={},WU_LED={},WU_EVENT={};
 const wuRunning=()=>{const a=G.wu&&G.wu.anim;return!!(a&&!a.finished&&a.page===G.phase);};
-function wuStart(dur){G.wu.anim={page:G.phase+1,t:0,dur,speed:1,playing:true,done:false,finished:false,loop:false,last:0};}
+function wuStart(dur,page,stopAt){G.wu.anim={page:page==null?G.phase+1:page,t:0,dur,speed:1,playing:true,done:false,finished:false,loop:false,last:0,stopAt:stopAt==null?null:stopAt,blocked:false};}
 function wuShell(o){const a=G.wu.anim;
   return`<div class="card sim fade" id="wuroot"><div class="simhead"><div><p class="eyebrow">${o.eyebrow}</p><h2 style="margin:0">${o.title}</h2></div>
 <div class="simctl"><button class="ghost" id="wu-play" onclick="A.wuToggle()">${playLabel(a.playing)}</button>${seg([[1,'1×'],[2,'2×'],[4,'4×']],a.speed,v=>`A.wuSpeed(${v})`)}<button class="ghost" onclick="A.wuSkip()" title="${esc(T('Jump to the end of the run'))}">⏭ ${T('Skip ahead')}</button></div></div>
 <div class="track"><div class="trackfill" id="wu-bar"></div></div><div class="trackl">${o.ticks.map(t=>`<span>${t}</span>`).join('')}</div>
 <div class="hud">${o.hud.map(([id,l,s])=>`<div><small>${l}</small><b id="wu-${id}">0</b><small>${s||''}</small></div>`).join('')}</div>
 <div class="wustage" id="wu-stage"></div></div><div class="ovl" id="wu-ovl" hidden></div>`;}
-function wuMount(){const a=G.wu&&G.wu.anim;if(!a||!$('wuroot'))return;wuPaint();if(a.done){wuEnd();return;}if(!a.loop){a.loop=true;a.last=0;requestAnimationFrame(wuTick);}}
+function wuMount(){const a=G.wu&&G.wu.anim;if(!a||!$('wuroot'))return;wuPaint();if(a.done){wuEnd();return;}if(a.blocked){wuEvent();return;}if(!a.loop){a.loop=true;a.last=0;requestAnimationFrame(wuTick);}}
 function wuTick(ts){const a=G.wu&&G.wu.anim;if(!a||!a.loop)return;if(!$('wuroot')){a.loop=false;return;}
-  const dt=a.last?Math.min(80,ts-a.last):0;a.last=ts;if(a.playing){a.t=Math.min(a.dur,a.t+dt*a.speed);if(a.t>=a.dur)a.done=true;}
+  const dt=a.last?Math.min(80,ts-a.last):0;a.last=ts;if(a.playing){a.t=Math.min(a.dur,a.t+dt*a.speed);
+    if(a.stopAt!=null&&a.t>=a.stopAt){a.t=a.stopAt;a.stopAt=null;a.blocked=true;a.loop=false;wuPaint();wuEvent();return;}  // a decision pauses the clock
+    if(a.t>=a.dur)a.done=true;}
   wuPaint();if(a.done){a.loop=false;wuEnd();return;}requestAnimationFrame(wuTick);}
 function wuPaint(){const a=G.wu.anim,b=$('wu-bar');if(b)b.style.width=(a.t/a.dur*100)+'%';WU_PAINT[G.chapter](a.t/a.dur);}
 function wuEnd(){const o=$('wu-ovl');if(!o)return;o.innerHTML=WU_END[G.chapter]();o.hidden=false;}
+function wuEvent(){const o=$('wu-ovl');if(!o)return;o.innerHTML=WU_EVENT[G.chapter]();o.hidden=false;}
+function wuResume(){const a=G.wu.anim,o=$('wu-ovl');a.blocked=false;if(o)o.hidden=true;wuMount();}
 const wuSet=(id,v)=>{const e=$('wu-'+id);if(e&&e.textContent!==v)e.textContent=v;};
 const wuEndCard=(kicker,title,kv)=>`<div class="ovlcard pop"><p class="eyebrow">${kicker}</p><h2>${title}</h2><div class="kv">${kv.map(([l,v])=>`<div>${l}<br><b>${v}</b></div>`).join('')}</div><div class="row" style="margin-top:14px"><button class="right" onclick="A.wuDone()">${T('See the results →')}</button></div></div>`;
 /* A calculation table: label, arithmetic, result. Every warm-up result is shown with its arithmetic. */
+/* Warm-up money is shown to the rupiah so every sum can be checked by hand. */
+const rpFull=n=>'Rp'+num(n);
 const calcTable=rows=>`<table class="wucalc">${rows.map(r=>`<tr class="${r[3]||''}"><td>${r[0]}</td><td class="mute">${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</table>`;
 
 /* ---------- Chapter 1: the grocery store ---------- */
@@ -1960,7 +2014,7 @@ WU_PAINT[1]=f=>{const res=G.wu.res,up=f*res.days.length,done=res.days.slice(0,Ma
   wuSet('short',num(sum(done.map(d=>d.dry.short+d.bread.short))));wuSet('waste',num(sum(done.map(d=>d.bread.waste))));};
 WU_END[1]=()=>{const r=G.wu.res;return wuEndCard(T('Day {d} · the round is over',{d:W('G_DAYS')}),T('Round complete'),[[T('Stockouts'),num(r.dry.stockouts+r.bread.stockouts)],[T('Waste'),num(r.bread.waste)]]);};
 WU_LED[1]=()=>{const r=G.wu.res;return{stockouts:r.dry.stockouts+r.bread.stockouts,waste:r.bread.waste};};
-function c1Results(){const r=G.wu.res,b=G.wu.base,rp=n=>fmtRp(n),days=W('G_DAYS');
+function c1Results(){const r=G.wu.res,b=G.wu.base,rp=rpFull,days=W('G_DAYS');
   const col=k=>{const x=r[k],y=b[k],p=r.pol[k],dry=k==='dry',cost=dry?'holdCost':'wasteCost';
     const lossRow=dry?[T('Holding'),T('{n} unit-days × Rp{c}',{n:num(x.holdUnits),c:num(W('G_HOLD_DRY'))}),rp(x.holdCost)]:[T('Waste'),T('{n} loaves × Rp{c}',{n:num(x.waste),c:num(W('G_BREAD_COST'))}),rp(x.wasteCost)];
     const diff=y.total-x.total;
@@ -1975,6 +2029,65 @@ function c1Results(){const r=G.wu.res,b=G.wu.base,rp=n=>fmtRp(n),days=W('G_DAYS'
 <p class="wuverdict ${diff>0?'good':diff<0?'bad':''}">${p.ss===0?T('You held no safety stock.'):diff>=0?T('The buffer saved {x}.',{x:rp(diff)}):T('The buffer cost {x}.',{x:rp(-diff)})}</p></div>`;};
   const rows=r.days.map(d=>`<tr><td>${d.day}</td><td>${num(d.demand)}</td><td>${num(d.dry.open)}</td><td>${num(d.dry.short)}</td><td>${num(d.dry.left)}</td><td>${num(d.bread.open)}</td><td>${num(d.bread.short)}</td><td>${num(d.bread.waste)}</td></tr>`).join('');
   return`<div class="fade"><div class="wu2">${col('dry')}${col('bread')}</div>${card(`${c1Chart('dry',r,days).replace('wuchart','wuchart sm')}${c1Chart('bread',r,days).replace('wuchart','wuchart sm')}${c1Legend()}<details><summary>${T('Day by day')}</summary><table><tr><th>${T('Day')}</th><th>${T('Demand')}</th><th>${c1Name('dry')}: ${T('opening')}</th><th>${T('short')}</th><th>${T('left at closing')}</th><th>${c1Name('bread')}: ${T('opening')}</th><th>${T('short')}</th><th>${T('thrown away')}</th></tr>${rows}</table></details>`,'wudays')}</div>`;}
+
+/* ---------- Chapter 2: the bakery ----------
+   Two rounds, each one page: plan, then the morning plays, then results. In round 2 the next-door bakery's oven
+   fails after your trucks are loaded, and its five cafés go out on a new run after your last one. */
+const C2_MS_PER_MIN=150;  // display only: 240 minutes play in about 36 s at 1×
+const grpName=id=>T(CAFE_GROUPS[id].label);
+const c2Round=()=>shownPhase();  // pages 1 and 2 are rounds 1 and 2
+function c2Plan(){const p=G.wu.plan,res=bakeryRound(p,null),r=c2Round(),fee=W('B_TRUCK_FEE');
+  const runOf={};res.runs.forEach(x=>x.rows.forEach(g=>{runOf[g.id]=x;}));
+  const rows=p.order.map((id,k)=>{const x=runOf[id];return`<tr><td class="mv"><button class="ghost" aria-label="${esc(T('Move up'))}" onclick="A.c2Move('${id}',-1)" ${k===0?'disabled':''}>↑</button><button class="ghost" aria-label="${esc(T('Move down'))}" onclick="A.c2Move('${id}',1)" ${k===p.order.length-1?'disabled':''}>↓</button></td>
+<td><b>${grpName(id)}</b><br><span class="mute">${T('{n} cafés · croissants are {p} of the order',{n:W('B_CAFES_PER_TRUCK'),p:pct(CAFE_GROUPS[id].crois)})}</span></td><td>${T('Run {n}',{n:x.i})}</td><td>${T('{t} min',{t:x.t})}</td><td>${pct(x.Sc)}</td>
+<td>${seg([[0,T('As ordered')],[1,T('Sourdough instead')]],p.swap[id]?1:0,v=>`A.wuPol('plan.swap.${id}',${!!v})`)}</td></tr>`;}).join('');
+  return`<div class="fade">`+card(`<h2>${T('Round {n}: plan',{n:r})}</h2>
+<div class="ctl"><span>${T('Trucks')}</span>${seg(B_TRUCK_OPTIONS.map(x=>[x,String(x)]),p.trucks,v=>`A.wuPol('plan.trucks',${v})`)}<small>${T('Hire: {f} per truck per round. Each truck carries {n} cafés per run.',{f:rpFull(fee),n:W('B_CAFES_PER_TRUCK')})}</small></div>
+<h3>${T('Run order')}</h3><table class="wucalc c2plan"><tr><th></th><th>${T('Cafés')}</th><th>${T('Run')}</th><th>${T('Delivered at')}</th><th>${T('Croissant freshness')}</th><th>${T('Product')}</th></tr>${rows}</table>
+<p class="mute hint">${T('Age at delivery = {a} + {b} + (run − 1) × {c} min.',{a:W('B_LOAD_MIN'),b:W('B_LEG_MIN'),c:W('B_TRIP_MIN')})}</p>${c2Curve(res.runs.map(x=>x.t))}`)+`</div>`+navRow('▶ '+T('Run round {n}',{n:r}),true,'A.c2Run()');}
+/* The freshness curves: the same function as meal safety, labelled Freshness here. Dots: this plan's runs. */
+function c2Curve(ages,upto){
+  const W0=520,H=170,L=40,B=140,sx=(W0-L-12)/300,sy=110,X=t=>L+t*sx,Y=v=>B-v*sy;
+  const path=c=>{let d='';for(let t=0;t<=300;t+=5)d+=(t?'L':'M')+X(t).toFixed(1)+' '+Y(compS(c,t)).toFixed(1);return d;};
+  let s=`<svg viewBox="0 0 ${W0} ${H}" class="wuchart c2curve" role="img" aria-label="${esc(T('Freshness'))}"><line class="wu-axis" x1="${L}" x2="${W0-8}" y1="${B}" y2="${B}"/>`;
+  for(const t of[0,60,120,180,240,300])s+=`<line class="wu-grid" x1="${X(t)}" x2="${X(t)}" y1="${Y(1)}" y2="${B}"/><text class="wu-lab" x="${X(t)}" y="${H-12}" text-anchor="middle">${t}</text>`;
+  for(const v of[0,0.5,1])s+=`<text class="wu-lab" x="${L-6}" y="${Y(v)+4}" text-anchor="end">${pct(v)}</text>`;
+  s+=`<path class="wu-cro" d="${path(CROISSANT())}"/><path class="wu-sou" d="${path(SOURDOUGH())}"/>`;
+  ages.forEach((t,k)=>{if(upto!=null&&t>upto)return;s+=`<circle class="wu-dot cro" cx="${X(t)}" cy="${Y(compS(CROISSANT(),t))}" r="5"/><circle class="wu-dot sou" cx="${X(t)}" cy="${Y(compS(SOURDOUGH(),t))}" r="5"/><text class="wu-lab" x="${X(t)}" y="${Y(1)-6}" text-anchor="middle">${T('run {n}',{n:k+1})}</text>`;});
+  return s+`<text class="wu-lab" x="${W0-8}" y="${H-1}" text-anchor="end">${T('minutes after baking')}</text></svg><div class="legend"><span><i class="lg wu-cro"></i>${T('Freshness')}: ${T('croissant')} (λ ${W('B_CROIS_LAM')}, h ${W('B_CROIS_H')})</span><span><i class="lg wu-sou"></i>${T('Freshness')}: ${T('sourdough')} (λ ${W('B_SOUR_LAM')}, h ${W('B_SOUR_H')})</span></div>`;}
+VIEWS.c2round=()=>{const w=G.wu,r=c2Round(),done=w.rounds[r];
+  if(viewing())return done&&done.res?c2Results(r):'';
+  if(!done)return c2Plan();
+  if(wuRunning())return wuShell({eyebrow:T('Run · round {n} of 2',{n:r}),title:T('The morning run'),ticks:[0,60,120,180,240].map(t=>T('{t} min',{t})),
+    hud:[['min',T('Minutes after baking'),''],['runs',T('Runs delivered'),''],['cafes',T('Cafés served'),''],['lost',T('Freshness lost'),T('of order value')],['hire',T('Truck hire'),'']]});
+  return c2Results(r)+navRow(nextLbl(G.phase+1));};
+const c2End=res=>bakeryAge(res.runs.length)+20;  // minutes shown: until the last run has been delivered
+WU_PAINT[2]=f=>{const rd=G.wu.rounds[c2Round()],res=rd.res,m=f*rd.endMin,st=$('wu-stage');
+  const arrived=res.runs.filter(x=>x.t<=m),lost=sum(arrived.flatMap(x=>x.rows.map(g=>g.lost)));
+  if(st)st.innerHTML=`<div class="wu2"><div>${c2Timeline(res,m)}</div><div>${c2Curve(res.runs.map(x=>x.t),m)}</div></div>`;
+  wuSet('min',num(m));wuSet('runs',`${arrived.length} / ${res.runs.length}`);wuSet('cafes',num(sum(arrived.map(x=>x.rows.length))*W('B_CAFES_PER_TRUCK')));
+  wuSet('lost',pct(lost/res.ordered));wuSet('hire',rpFull(res.hire));};
+/* Timeline of the morning: loading, then each run on the road; the cursor is the clock. */
+function c2Timeline(res,m){
+  const W0=520,L=96,sx=(W0-L-12)/(c2End(res)),rh=26,H=res.runs.length*rh+36,X=t=>L+t*sx;
+  let s=`<svg viewBox="0 0 ${W0} ${H}" class="wuchart" role="img" aria-label="${esc(T('The morning run'))}">`;
+  res.runs.forEach((x,k)=>{const y=8+k*rh,dep=x.t-W('B_LEG_MIN'),on=m>=x.t;
+    s+=`<text class="wu-lab" x="${L-8}" y="${y+14}" text-anchor="end">${T('run {n}',{n:x.i})}${x.rows.some(g=>g.extra)?' ★':''}</text><rect class="wu-load" x="${X(0)}" y="${y+4}" width="${(dep)*sx}" height="12"/>`;
+    s+=`<rect class="${on?'wu-road':'wu-wait'}" x="${X(dep)}" y="${y+4}" width="${W('B_LEG_MIN')*sx}" height="12"/>`;
+    if(on)s+=`<text class="wu-lab" x="${X(x.t)+6}" y="${y+14}">${x.rows.map(g=>grpName(g.id)).join(', ')} · ${pct(x.Sc)}</text>`;});
+  return s+`<line class="wu-now" x1="${X(Math.min(m,c2End(res)))}" x2="${X(Math.min(m,c2End(res)))}" y1="2" y2="${H-24}"/><text class="wu-lab" x="${L}" y="${H-6}">${T('loading and waiting')} · ${T('on the road')} · ${T('croissant freshness on arrival')}</text></svg>`;}
+WU_EVENT[2]=()=>{const rd=G.wu.rounds[c2Round()],n=rd.res.runs.length+1;
+  return`<div class="ovlcard pop"><p class="eyebrow">${T('{t} min · the clock is paused · a decision is needed',{t:W('B_LOAD_MIN')})}</p><h2>${T('The bakery next door has an oven failure')}</h2>
+<div class="ovlbody"><p>${T('Its {n} cafés call after your trucks are loaded. Their orders go out on a new run after your last one: run {r}, delivered at {t} min, when croissants keep {s}.',{n:W('B_CAFES_PER_TRUCK'),r:n,t:bakeryAge(n),s:pct(compS(CROISSANT(),bakeryAge(n)))})}</p></div>
+<div class="opts" style="margin-top:12px"><div class="opt" onclick="A.c2Event(false)"><h4>${T('Deliver their order as placed')}</h4></div><div class="opt" onclick="A.c2Event(true)"><h4>${T('Send sourdough instead of croissants')}</h4></div></div></div>`;};
+WU_END[2]=()=>{const res=G.wu.rounds[c2Round()].res;return wuEndCard(T('Round {n} of 2 · all runs delivered',{n:c2Round()}),T('Morning complete'),[[T('Delivered'),pct(res.delivered)],[T('Freshness lost'),pct(res.lost)]]);};
+WU_LED[2]=()=>{const r=c2Round(),res=G.wu.rounds[r].res;return{round:r,delivered:res.delivered,lost:res.lost};};
+function c2Results(r){const res=G.wu.rounds[r].res,rp=rpFull;
+  const rows=res.runs.map(x=>`<tr><td>${T('Run {n}',{n:x.i})}${x.rows.some(g=>g.extra)?` <span class="tag r">${T('next door')}</span>`:''}</td><td>${x.rows.map(g=>grpName(g.id)+(g.swap?` (${T('sourdough instead')})`:'')).join('<br>')}</td><td>${W('B_LOAD_MIN')} + ${W('B_LEG_MIN')} + ${x.i-1} × ${W('B_TRIP_MIN')} = ${x.t}</td><td>${pct(x.Sc)}</td><td>${pct(x.Ss)}</td><td>${rp(sum(x.rows.map(g=>g.sell)))}</td><td>${rp(sum(x.rows.map(g=>g.lost)))}</td></tr>`).join('');
+  return`<div class="fade">`+card(`<h2>${T('Round {n}: results',{n:r})}</h2><table class="wucalc"><tr><th>${T('Run')}</th><th>${T('Cafés')}</th><th>${T('Age at delivery (min)')}</th><th>${T('Croissant')}</th><th>${T('Sourdough')}</th><th>${T('Sellable')}</th><th>${T('Lost to age')}</th></tr>${rows}</table>
+${calcTable([[T('Order value'),T('{n} cafés × {v}',{n:num(res.ordered/W('B_CAFE_ORDER')),v:rp(W('B_CAFE_ORDER'))}),rp(res.ordered)],[T('Sellable on arrival'),T('value × freshness; sourdough instead pays {p} of the croissant value',{p:pct(W('B_SWAP_VALUE'))}),rp(res.sell)],
+[T('Truck hire'),`${res.plan.trucks} × ${rp(W('B_TRUCK_FEE'))}`,'− '+rp(res.hire)],[T('Delivered'),`(${rp(res.sell)} − ${rp(res.hire)}) ÷ ${rp(res.ordered)}`,`<b>${pct(res.delivered)}</b>`,'tot'],[T('Freshness lost'),`${rp(res.lostFresh)} ÷ ${rp(res.ordered)}`,`<b>${pct(res.lost)}</b>`,'tot']])}
+${res.lostSwap?`<p class="mute hint">${T('Sourdough sent instead of croissants gave up {x} of order value.',{x:rp(res.lostSwap)})}</p>`:''}${c2Curve(res.runs.map(x=>x.t))}`)+`</div>`;}
 
 /* ---------- Set-up page 1: priorities + posture ---------- */
 const head=(n,t)=>`<h2><span class="num">${n}</span>${t}</h2>`;
@@ -2506,9 +2619,14 @@ const A={
   /* Warm-up chapters: policy edits, starting a run, the run controls */
   wuPol(path,v){if(viewing())return;setPath(G.wu,path,v);render();},
   c1Run(){if(viewing())return;G.wu.res=groceryRound(G.wu.pol);G.wu.base=groceryNoBuffer(G.wu.pol);wuStart(W('G_DAYS')*6000);G.phase++;render();},
+  c2Move(id,d){if(viewing())return;const o=G.wu.plan.order,i=o.indexOf(id),j=i+d;if(j<0||j>=o.length)return;o.splice(i,1);o.splice(j,0,id);render();},
+  c2Run(){if(viewing())return;const r=G.phase,res=bakeryRound(G.wu.plan,null),rd={plan:clone(G.wu.plan),res,endMin:c2End(res)};G.wu.rounds[r]=rd;
+    wuStart(rd.endMin*C2_MS_PER_MIN,G.phase,r===2?W('B_LOAD_MIN')*C2_MS_PER_MIN:null);render();},
+  /* Round 2: the next-door bakery's cafés join after loading, on a new run after the last planned one. */
+  c2Event(swap){const rd=G.wu.rounds[G.phase],a=G.wu.anim;if(!rd||!a||!a.blocked)return;rd.event={swap};rd.res=bakeryRound(rd.plan,{swap});rd.endMin=c2End(rd.res);a.dur=rd.endMin*C2_MS_PER_MIN;wuResume();},
   wuToggle(){const a=G.wu&&G.wu.anim;if(!a)return;a.playing=!a.playing;const b=$('wu-play');if(b)b.textContent=playLabel(a.playing);},
   wuSpeed(v){const a=G.wu&&G.wu.anim;if(!a)return;a.speed=v;document.querySelectorAll('#wuroot .simctl .seg button').forEach(b=>b.classList.toggle('on',b.textContent===v+'×'));},
-  wuSkip(){const a=G.wu&&G.wu.anim;if(!a||a.done)return;a.t=a.dur;a.done=true;},
+  wuSkip(){const a=G.wu&&G.wu.anim;if(!a||a.done||a.blocked)return;if(a.stopAt!=null){a.t=a.stopAt;a.stopAt=null;a.blocked=true;a.loop=false;wuPaint();wuEvent();return;}a.t=a.dur;a.done=true;if(!a.loop){wuPaint();wuEnd();}},
   wuDone(){const a=G.wu&&G.wu.anim;if(!a)return;a.finished=true;a.loop=false;G.wu.led=WU_LED[G.chapter]();render();},
   skipWarmups(){if(!ALLOW_SKIP_WARMUPS||G.chapter>=3)return;G.carry.skipped=true;startChapter(3);},
   downloadLog(){const log={decisions:G.dec,plans:G.plans,events:G.eventLog,ledger:G.results.map(c=>({y:c.y,seed:c.seed,...c.ledger,incidents:c.incidents})),chains:G.world.chains};
@@ -2704,6 +2822,56 @@ function fbRefresh(){const b=$('fbbox');if(b)b.outerHTML=feedbackBox();}
    English source text → Bahasa Indonesia (id) and Spanish (es). Keys must match the English passed to T() exactly;
    {name} placeholders must survive translation. Indonesian programme terms (SPPG, SLHS, ompreng, juknis) stay as they are. */
 const I18N={
+"Breakfast cafés":{id:"Kafe sarapan",es:"Cafeterías de desayuno"},
+"Corner cafés":{id:"Kafe sudut jalan",es:"Cafeterías de barrio"},
+"Lunch cafés":{id:"Kafe makan siang",es:"Cafeterías de almuerzo"},
+"Next-door bakery's cafés":{id:"Kafe milik toko roti sebelah",es:"Cafeterías de la panadería vecina"},
+"{n} cafés · croissants are {p} of the order":{id:"{n} kafe · croissant {p} dari pesanan",es:"{n} cafeterías · los cruasanes son el {p} del pedido"},
+"{t} min":{id:"{t} mnt",es:"{t} min"},
+"As ordered":{id:"Sesuai pesanan",es:"Según el pedido"},
+"Sourdough instead":{id:"Ganti sourdough",es:"Masa madre en su lugar"},
+"sourdough instead":{id:"diganti sourdough",es:"masa madre en su lugar"},
+"Round {n}: plan":{id:"Putaran {n}: rencana",es:"Ronda {n}: plan"},
+"Trucks":{id:"Truk",es:"Camiones"},
+"Hire: {f} per truck per round. Each truck carries {n} cafés per run.":{id:"Sewa: {f} per truk per putaran. Setiap truk membawa {n} kafe per pengantaran.",es:"Alquiler: {f} por camión y ronda. Cada camión lleva {n} cafeterías por viaje."},
+"Run order":{id:"Urutan pengantaran",es:"Orden de los viajes"},
+"Cafés":{id:"Kafe",es:"Cafeterías"},
+"Delivered at":{id:"Tiba pada",es:"Entregado a los"},
+"Croissant freshness":{id:"Kesegaran croissant",es:"Frescura del cruasán"},
+"Product":{id:"Produk",es:"Producto"},
+"Age at delivery = {a} + {b} + (run − 1) × {c} min.":{id:"Umur saat tiba = {a} + {b} + (pengantaran − 1) × {c} mnt.",es:"Edad al entregar = {a} + {b} + (viaje − 1) × {c} min."},
+"Run round {n}":{id:"Jalankan putaran {n}",es:"Jugar la ronda {n}"},
+"Freshness":{id:"Kesegaran",es:"Frescura"},
+"minutes after baking":{id:"menit setelah dipanggang",es:"minutos tras hornear"},
+"croissant":{id:"croissant",es:"cruasán"},
+"sourdough":{id:"sourdough",es:"pan de masa madre"},
+"Run · round {n} of 2":{id:"Jalankan · putaran {n} dari 2",es:"Jugar · ronda {n} de 2"},
+"The morning run":{id:"Pengantaran pagi",es:"El reparto de la mañana"},
+"Minutes after baking":{id:"Menit setelah dipanggang",es:"Minutos tras hornear"},
+"Runs delivered":{id:"Pengantaran tiba",es:"Viajes entregados"},
+"Cafés served":{id:"Kafe terlayani",es:"Cafeterías servidas"},
+"Truck hire":{id:"Sewa truk",es:"Alquiler de camiones"},
+"loading and waiting":{id:"memuat dan menunggu",es:"carga y espera"},
+"croissant freshness on arrival":{id:"kesegaran croissant saat tiba",es:"frescura del cruasán al llegar"},
+"{t} min · the clock is paused · a decision is needed":{id:"{t} mnt · waktu dihentikan · perlu keputusan",es:"{t} min · el reloj está en pausa · hay que decidir"},
+"The bakery next door has an oven failure":{id:"Oven toko roti sebelah rusak",es:"A la panadería vecina se le ha averiado el horno"},
+"Its {n} cafés call after your trucks are loaded. Their orders go out on a new run after your last one: run {r}, delivered at {t} min, when croissants keep {s}.":{id:"{n} kafenya menelepon setelah truk Anda selesai dimuat. Pesanan mereka berangkat dengan pengantaran baru setelah pengantaran terakhir Anda: pengantaran {r}, tiba pada menit ke-{t}, saat croissant tinggal {s} kesegarannya.",es:"Sus {n} cafeterías llaman cuando sus camiones ya están cargados. Sus pedidos salen en un viaje nuevo tras el último suyo: viaje {r}, entregado a los {t} min, cuando los cruasanes conservan el {s}."},
+"Deliver their order as placed":{id:"Kirim pesanan mereka apa adanya",es:"Entregar su pedido tal como lo hicieron"},
+"Send sourdough instead of croissants":{id:"Kirim sourdough sebagai ganti croissant",es:"Enviar pan de masa madre en lugar de cruasanes"},
+"Round {n} of 2 · all runs delivered":{id:"Putaran {n} dari 2 · semua pengantaran tiba",es:"Ronda {n} de 2 · todos los viajes entregados"},
+"Morning complete":{id:"Pagi selesai",es:"Mañana completada"},
+"next door":{id:"sebelah",es:"vecina"},
+"Age at delivery (min)":{id:"Umur saat tiba (mnt)",es:"Edad al entregar (min)"},
+"Croissant":{id:"Croissant",es:"Cruasán"},
+"Sourdough":{id:"Sourdough",es:"Masa madre"},
+"Sellable":{id:"Layak jual",es:"Vendible"},
+"Lost to age":{id:"Hilang karena umur",es:"Perdido por la edad"},
+"Order value":{id:"Nilai pesanan",es:"Valor del pedido"},
+"{n} cafés × {v}":{id:"{n} kafe × {v}",es:"{n} cafeterías × {v}"},
+"Sellable on arrival":{id:"Layak jual saat tiba",es:"Vendible al llegar"},
+"value × freshness; sourdough instead pays {p} of the croissant value":{id:"nilai × kesegaran; sourdough pengganti dibayar {p} dari nilai croissant",es:"valor × frescura; la masa madre en su lugar paga el {p} del valor del cruasán"},
+"Round {n}: results":{id:"Putaran {n}: hasil",es:"Ronda {n}: resultados"},
+"Sourdough sent instead of croissants gave up {x} of order value.":{id:"Sourdough yang dikirim sebagai ganti croissant mengorbankan {x} nilai pesanan.",es:"Enviar masa madre en lugar de cruasanes costó {x} del valor del pedido."},
 "Jump to the end of the run":{id:"Lompat ke akhir pengantaran",es:"Saltar al final de la ronda"},
 "See the results →":{id:"Lihat hasilnya →",es:"Ver los resultados →"},
 "Dry goods":{id:"Barang kering",es:"Productos secos"},
@@ -2778,7 +2946,7 @@ const I18N={
 "units":{id:"unit",es:"unidades"},
 "Ledger after Round {n}":{id:"Buku besar setelah Putaran {n}",es:"Balance tras la ronda {n}"},
 "Ledger fills in after Round 1":{id:"Buku besar terisi setelah Putaran 1",es:"El balance se llena tras la ronda 1"},
-"Delivered · Freshness lost":{id:"Terkirim · Kesegaran hilang",es:"Entregado · Frescura perdida"},
+"Delivered · Freshness lost":{id:"Tersalurkan · Kesegaran hilang",es:"Entregado · Frescura perdida"},
 "Freshness lost":{id:"Kesegaran hilang",es:"Frescura perdida"},
 "net of truck hire":{id:"setelah dikurangi sewa truk",es:"neto del alquiler de camiones"},
 "of order value":{id:"dari nilai pesanan",es:"del valor del pedido"},
@@ -3841,6 +4009,11 @@ function runScenarios(){const out={};for(const[k,s]of Object.entries(SCENARIOS))
 const CH_AUTOPLAY={
   1:()=>{const pols={default:{dry:{q:100,ss:20},bread:{q:100,ss:20}},noBuffer:{dry:{q:100,ss:0},bread:{q:100,ss:0}},bufferDryOnly:{dry:{q:100,ss:20},bread:{q:100,ss:0}},bigBuffer:{dry:{q:120,ss:40},bread:{q:120,ss:40}}};
     return{animSec:W('G_DAYS')*6,runs:Object.fromEntries(Object.entries(pols).map(([k,p])=>{const r=groceryRound(p);return[k,{dry:{stockouts:r.dry.stockouts,holdUnits:r.dry.holdUnits,cost:r.dry.total},bread:{stockouts:r.bread.stockouts,waste:r.bread.waste,cost:r.bread.total}}];}))};},
+  2:()=>{const plans={'2 trucks, A-B-C':{trucks:2,order:['A','B','C'],swap:{}},'3 trucks':{trucks:3,order:['A','B','C'],swap:{}},
+      '1 truck, lunch cafés last':{trucks:1,order:['A','B','C'],swap:{}},'1 truck, lunch last, sourdough':{trucks:1,order:['A','B','C'],swap:{C:true}},'1 truck, breakfast last':{trucks:1,order:['C','B','A'],swap:{}}};
+    const f=r=>({runs:r.runs.length,delivered:+r.delivered.toFixed(3),lost:+r.lost.toFixed(3),hire:r.hire});
+    return{animSec:Object.fromEntries(Object.entries(plans).map(([k,p])=>[k,[c2End(bakeryRound(p,null)),c2End(bakeryRound(p,{swap:false}))].map(m=>m*C2_MS_PER_MIN/1000)])),
+      runs:Object.fromEntries(Object.entries(plans).map(([k,p])=>[k,{round1:f(bakeryRound(p,null)),round2:f(bakeryRound(p,{swap:false})),round2swap:f(bakeryRound(p,{swap:true}))}]))};},
   5:()=>({runs:runScenarios()}),
 };
 function autoplayChapter(n){const ch=G.chapter,out=CH_AUTOPLAY[n]?CH_AUTOPLAY[n]():{note:'no autoplay yet'};G.chapter=ch;return out;}
