@@ -29,6 +29,9 @@ Five chapters, played in order: Ch1 The Grocery Store, Ch2 The Bakery, Ch3 MBG: 
 | Decisions | order qty + safety stock per product | trucks, run order, croissant or sourdough per group | run count, meal per run | province (one), radius, size, build/rent, vehicles, sourcing, weekly menu | everything in the full game |
 | Fixed | – | – | 1 vehicle, Teluk Lumba kitchen (30-min leg) | posture "balanced", activation 1, budget split automatic, no events or weather | – |
 | Carries forward | – | – | run menus → Ch4 week | regency, kitchens, sourcing, menu → Ch5 first region | – |
+| Food-cost ceiling | – | – | morning average: Σ runs (portions × meal food cost) ≤ fed × Rp10,000 (`FOOD_CEILING`); over it, "Run the morning" is disabled; not scored | – | – |
+
+The Ch3 food-cost ceiling is a modelling decision, not a sourced rule: the sourced Rp10,000 raw-material ceiling is applied as an average per portion across the whole morning (`morningOps()` returns `food`, `foodAvg`, `overCeiling`). It applies in Ch3 only; Ch4–5 keep the existing menu-page handling of the ceiling.
 
 ### ALLOW_SKIP_WARMUPS
 `ALLOW_SKIP_WARMUPS` (Section 1) defaults to `false`. When `true`, Ch1–2 show a "Skip to Chapter 3 →" button (`A.skipWarmups()`), which sets `G.carry.skipped`. Ch3's brief then adds the safety-stock line (`C3_SKIP_LINE`, translated).
