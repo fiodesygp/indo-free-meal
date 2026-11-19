@@ -2657,6 +2657,9 @@ function trapReport(){
   const tot=sum(Object.values(R.reduce((a,c)=>{for(const[m,u]of Object.entries(c.menuUse)){a[m]=(a[m]||0)+u.portions;}return a;},{})));
   const m7=sum(R.map(c=>(c.menuUse.M7||{portions:0}).portions));
   if(tot&&m7/tot>=0.5){const up=sum(R.map(c=>(c.menuUse.M7||{up:0}).up))/m7;out.push([T('The dominant-menu check'),T('{p} of your portions were the standard dry pack. Children ate about {u} of it. Nutritional adequacy finished at {n}, food safety at {s}. If this run beat your varied-menu runs overall, the uptake mechanic is not biting hard enough.',{p:pct(m7/tot),u:pct(up),n:sc(finalLedger().nutrition),s:sc(finalLedger().safety)})]);}
+  /* Incidents with every portion inside its safe window: the baseline rate, not holding (incCause, presentation only). */
+  const inWin=R.flatMap(c=>c.incidents.map(i=>incCause(i,c))).filter(x=>x&&(x.lam==null||x.hold<=x.lam)).length;
+  if(inWin)out.push([T('Incidents inside the safe window'),T('{n} of your {b} incidents happened with food inside its safe window. A baseline risk remains even when holding is safe.',{n:inWin,b:incs.length})]);
   const slow=G.dec.posture==='cautious'||G.plans[0].activation<=0.5;
   if(slow&&R[0].ledger.absorption<0.7)out.push([T('Excessive caution'),T('The first semester spent {a} of the allocation. The next semester\'s allocation fell to {b} of full coverage, and the one after was {c}. Unspent money is not saved; it is taken back, and the children it was sized for go unfed. In 2025 the real programme spent {r} of its allocation.',{a:pct(R[0].ledger.absorption),b:pct(R[1].ledger.allocFrac),c:pct(R[2].ledger.allocFrac),r:pct(P('REAL_ABSORPTION_2025'),1)})]);
   return out;
@@ -2665,7 +2668,7 @@ VIEWS.debrief=()=>{const w=G.world,R=G.results;const traps=trapReport();
   const used=[...new Set(R.flatMap(c=>Object.keys(c.menuUse)))];
   const menuTbl=`<table><tr><th>${T('Menu')}</th><th>${T('Weakest component')}</th><th>${T('Safe until')}</th><th>${T('Then halves every')}</th></tr>${used.map(m=>{const b=bindingComp(m,'none');return`<tr><td>${menuName(m)}</td><td>${compName(b)}</td><td>${b.lam} min</td><td>${b.h} min</td></tr>`;}).join('')}</table><p class="mute hint">${T('Add-ons can lower these: cut fruit caps a meal at 90 minutes, fresh sambal at 120. All of these values are pedagogical estimates; the drivers are real food science.')}</p>`;
   return card(`<h2>${T('Debrief')}</h2><p class="lead">${T('What happened, what you could not see, and how the real programme compares.')}</p>
-<h3>${T('Patterns in your run')}</h3>${traps.length?traps.map(([t,x])=>`<div class="note"><b>${t}.</b> ${x}</div>`).join(''):`<p>${T('None of the four flagged failure patterns fired in this run.')}</p>`}
+<h3>${T('Patterns in your run')}</h3>${traps.length?traps.map(([t,x])=>`<div class="note"><b>${t}.</b> ${x}</div>`).join(''):`<p>${T('None of the flagged patterns fired in this run.')}</p>`}
 <h3>${T('Your redirect chains')}</h3>${w.chains.length?w.chains.map(chainHtml).join(''):`<p class="mute">${T('No kitchen was suspended.')}</p>`}
 <h3>${T('What you could not see')}</h3><p>${T('Plate value, true')}: ${R.map(c=>`${periodShort(c.y)} <b>${sc(c.ledger.plateTrue)}</b>${c.ledger.plateVisible?'':` (${T('you saw 100%')})`}`).join(' · ')}. ${T('It was never 100%.')}</p>${menuTbl}
 <p>${T('Compliance with the 4-hour window is not safety. A menu safe for 95 minutes is already growing bacteria at minute 96 while it stays legal for another 145.')}</p>
@@ -3602,7 +3605,9 @@ const I18N={
 "{n} children had no open kitchen nearby and went unfed.":{id:"{n} anak tidak memiliki dapur buka di dekatnya dan tidak makan."},
 "corrective":{id:"perbaikan"},
 "No second-order incident fired in this run, but trace the chains below: the receiving kitchens carried more runs and longer holds.":{id:"Tidak ada insiden lanjutan dalam permainan ini, tetapi telusuri rantai di bawah: dapur penerima menanggung lebih banyak putaran dan waktu tunggu lebih lama."},
-"None of the four flagged failure patterns fired in this run.":{id:"Tidak satu pun dari empat pola kegagalan yang ditandai muncul dalam permainan ini."},
+"None of the flagged patterns fired in this run.":{id:"Tidak satu pun pola yang ditandai muncul dalam permainan ini."},
+"Incidents inside the safe window":{id:"Insiden di dalam jendela aman"},
+"{n} of your {b} incidents happened with food inside its safe window. A baseline risk remains even when holding is safe.":{id:"{n} dari {b} insiden Anda terjadi saat makanan masih di dalam jendela amannya. Risiko dasar tetap ada meski waktu tunggu aman."},
 "No kitchen was suspended.":{id:"Tidak ada dapur yang dihentikan."},
 "you saw 100%":{id:"Anda melihat 100%"},
 "Restart from the brief? This run will be lost.":{id:"Mulai ulang dari pengarahan? Permainan ini akan hilang."},
