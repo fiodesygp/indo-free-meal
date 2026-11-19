@@ -566,6 +566,7 @@ button.small{padding:4px 10px;font-size:13px}
 .locknote{display:flex;gap:var(--sp-3);align-items:flex-start;color:var(--mute)}.locknote p{margin:var(--sp-1) 0 0;font:var(--t-body-s)}.locknote b{color:var(--ink)}
 .unlockcard{border:2px solid var(--green-brand);box-shadow:0 0 0 6px var(--green-soft);animation:popin .5s var(--ease)}
 .eyebrow.unlocked{color:var(--green-ink);font-weight:var(--w-demi)}
+.incwhy{font:var(--t-body-s);border-left:4px solid var(--bad);background:var(--bg);border-radius:var(--r-s);padding:var(--sp-2) var(--sp-3);margin:var(--sp-2) 0}
 .recap{background:#FAFBFB;border:1px solid var(--line);border-radius:var(--r-m);padding:var(--sp-2) var(--sp-4) var(--sp-3);margin:0 0 var(--sp-3)}.recap h3{margin:var(--sp-2) 0}
 details.adjust>summary{cursor:pointer;font:var(--t-title-xs);padding:var(--sp-1) 0}
 .menuline{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);font:var(--t-body-s);margin:var(--sp-2) 0}.menuline b{color:var(--green-ink);margin-right:4px}
@@ -2506,9 +2507,33 @@ function assignIncidentDays(){const a=G.anim,c=G.ctx,r=rngFrom(fnv(decisionVecto
   a.incs=c.incidents.map(i=>Object.assign({},i,{day:from+r()*(D*.98-from)})).sort((p,q)=>p.day-q.day);a.incIdx=0;}
 function markIncident(inc,boom){const gEl=document.querySelector(`.simmap [data-kid="${inc.kid}"]`);if(!gEl)return;const cx=gEl.dataset.cx,cy=gEl.dataset.cy;
   gEl.insertAdjacentHTML('beforeend',`<circle class="inc" cx="${cx}" cy="${cy}" r="9.5"/>`+(boom?`<circle class="boom" cx="${cx}" cy="${cy}" r="6"/>`:''));}
+/* Why an incident happened, from the values the engine used. hazard() is HAZARD_BASE + HAZARD_K × riskShare ×
+   (NC_FLOOR_WEIGHT + nc) × capStress, ×BREACH_MULT if a run breaks the 4-hour or 30-minute rule, ×CORRECTIVE_MULT
+   under a corrective plan. The kitchen's row holds riskShare, nc, util and breach as the engine computed them; the
+   breach reasons come from kitchenOps() on the same kitchen, plan and semester. Presentation only: nothing is drawn. */
+const placeOf=rid=>{const p=REGIONS.rows.find(r=>r.id===rid);return`${PROV(p)} · ${KAB(region(rid))}`;};
+function incCtx(inc){return[G.ctx,...(G.results||[])].find(c=>c&&c.incidents&&c.incidents.some(x=>x===inc||(x.kid===inc.kid&&x.run===inc.run&&x.dow===inc.dow&&x.victims===inc.victims)));}
+function incCause(inc,c){
+  c=c||incCtx(inc);const row=c&&c.rows.find(r=>r.id===inc.kid);if(!row)return null;
+  const plan=c.plan||G.plans[c.y-1],day=plan.menu[inc.dow||0]||{a:'none'},b=bindingComp(inc.menu,day.a);
+  const k=G.world.kitchens.find(x=>x.id===inc.kid),wk=WEEK().map(d=>kitchenOps(Object.assign({},k,{load:row.load,cap:row.cap,redirectIn:row.redirectIn,corrective:row.corrective}),plan,c,d));
+  const runs=wk.flatMap(o=>o.runs);
+  return{hold:inc.hold,lam:b?b.lam:null,S:inc.S,risk:row.riskShare,nc:row.nc,cs:capStress(row.util),corrective:row.corrective,
+    legRule:runs.some(r=>r.legBreach),holdRule:runs.some(r=>r.overLimit)};}
+function incWindow(inc,c){const x=incCause(inc,c);if(!x)return'';
+  return x.lam==null?T('Held {h} min · this meal has no safe-window limit',{h:num(x.hold)})
+    :x.hold<=x.lam?T('Held {h} min · safe window for this meal {l} min → not a holding failure',{h:num(x.hold),l:num(x.lam)})
+    :T('Held {h} min · safe window for this meal {l} min → past it: {p} of this run\'s portions at risk',{h:num(x.hold),l:num(x.lam),p:pct(1-x.S)});}
+function incDriver(inc,c){const x=incCause(inc,c);if(!x)return'';
+  const why=[x.holdRule&&T('a run broke the 4-hour rule'),x.legRule&&T('a delivery leg broke the 30-minute rule')].filter(Boolean);
+  const mult=(why.length?' '+T('×{m}: {why}.',{m:dec(P('BREACH_MULT'),1),why:why.join(' '+T('and')+' ')}):'')+(x.corrective?' '+T('×{m}: kept open under a corrective plan.',{m:dec(P('CORRECTIVE_MULT'),1)}):'');
+  const base=x.risk>0?T('Cause: food held past its safe window ({p} of this kitchen\'s portions over the week were at risk), made worse by process non-compliance ({nc}), on top of the baseline incident rate.',{p:pct(x.risk),nc:pct(x.nc)})+(x.cs>1?' '+T('Crowding multiplied the holding risk by {c}.',{c:dec(x.cs,1)}):'')
+    :T('Cause: the baseline incident rate, {b} a kitchen-year, which applies even when holding is safe.',{b:dec(P('HAZARD_BASE'),2)});
+  return base+mult;}
+const incExplain=(inc,c)=>`<div class="incwhy"><b>${inc.kid}</b>: <b>${incWindow(inc,c)}.</b> ${incDriver(inc,c)}</div>`;
 function fireIncident(inc){const a=G.anim;a.ill+=inc.victims;a.nInc++;markIncident(inc,true);
   const box=a.dom&&a.dom.illbox;if(box){box.classList.remove('shake');void box.offsetWidth;box.classList.add('shake');}
-  toast(`${T('Day {d}',{d:Math.round(inc.day)})} · <b>${inc.kid}</b>, ${KAB(region(inc.rid))}: <b>${T('{n} children ill',{n:num(inc.victims)})}</b>. ${T('{dow}, run {a} of {b}, eaten {m} min after cooking ({menu}).',{dow:dayName(inc.dow||0),a:inc.run,b:inc.nRuns,m:Math.round(inc.hold),menu:menuName(inc.menu)})}${inc.chainIds.length?' '+T('This kitchen had taken redirected children.'):''}`,'bad');}
+  toast(`${T('Day {d}',{d:Math.round(inc.day)})} · <b>${inc.kid}</b>, ${placeOf(inc.rid)}: <b>${T('{n} children ill',{n:num(inc.victims)})}</b>. ${T('{dow}, run {a} of {b} ({menu}).',{dow:dayName(inc.dow||0),a:inc.run,b:inc.nRuns,menu:menuName(inc.menu)})} ${incWindow(inc)}.${inc.chainIds.length?' '+T('This kitchen had taken redirected children.'):''}`,'bad');}
 function effectFor(rid,day,kid){const r={};for(const e of G.anim.effects)if(e.rid===rid&&(!e.kid||e.kid===kid)&&day>=e.from&&day<e.to)r[e.type]=true;return r;}
 function drawSim(){
   const a=G.anim,d=a&&a.dom;if(!d||!d.bar)return;const D=P('PERIOD_DAYS'),A0=G.ctx.A;
@@ -2554,7 +2579,7 @@ const EVENT_TEXT={
     opts:[['detour',T('Run the detour for the rest of the semester')],['shelf',T('Serve the sealed emergency pack in cut-off schools for three weeks')],['skip',T('Suspend service to cut-off schools for three weeks')]]}),
   price:ev=>({title:T('Price spike: eggs and chicken'),body:T('Kitchen demand has pushed farm-gate egg and chicken prices up, and distributors favour buyers who pay cash fast (this happened in late 2025). Affected days: {runs}.',{runs:ev.slots.map(dayName).join(', ')}),
     opts:[['absorb',T('Absorb the higher price this semester')],['swap',T('Switch those days to the fish menu this semester')],['trim',T('Keep the menu, cut the protein portion')]]}),
-  incident:ev=>({title:T(ev.list.length>1?'Food-poisoning incidents':'Food-poisoning incident'),body:`<table><tr><th>${T('Kitchen')}</th><th>${T('Children ill')}</th><th>${T('Day')}</th><th>${T('Run')}</th><th>${T('Cook to eat')}</th><th>${T('Menu')}</th><th>${T('Hygiene cert.')}</th></tr>${ev.list.map(i=>`<tr><td>${i.kid}${i.chainIds.length?` <span class="tag r">${T('took redirected children')} (${i.chainIds.join(', ')})</span>`:''}</td><td>${num(i.victims)}${i.major?` <b class="bad">${T('major')}</b>`:''}</td><td>${dayName(i.dow||0)}</td><td>${T('{a} of {b}',{a:i.run,b:i.nRuns})}</td><td>${i.hold.toFixed?Math.round(i.hold):i.hold} min</td><td>${menuName(i.menu)}</td><td>${T(i.certified?'certified':'none')}</td></tr>`).join('')}</table>${ev.list.some(i=>i.wasCorrective)?`<div class="note">${T('One or more of these kitchens was already on a corrective plan. They will be suspended whatever you choose.')}</div>`:''}<p class="mute">${T('Children of a suspended kitchen are redirected to the nearest open kitchens.')}</p>`,
+  incident:ev=>({title:T(ev.list.length>1?'Food-poisoning incidents':'Food-poisoning incident'),body:`<table><tr><th>${T('Kitchen')}</th><th>${T('Children ill')}</th><th>${T('Day')}</th><th>${T('Run')}</th><th>${T('Cook to eat')}</th><th>${T('Menu')}</th><th>${T('Hygiene cert.')}</th></tr>${ev.list.map(i=>`<tr><td>${i.kid}${i.chainIds.length?` <span class="tag r">${T('took redirected children')} (${i.chainIds.join(', ')})</span>`:''}</td><td>${num(i.victims)}${i.major?` <b class="bad">${T('major')}</b>`:''}</td><td>${dayName(i.dow||0)}</td><td>${T('{a} of {b}',{a:i.run,b:i.nRuns})}</td><td>${i.hold.toFixed?Math.round(i.hold):i.hold} min</td><td>${menuName(i.menu)}</td><td>${T(i.certified?'certified':'none')}</td></tr>`).join('')}</table>${ev.list.map(i=>incExplain(i)).join('')}${ev.list.some(i=>i.wasCorrective)?`<div class="note">${T('One or more of these kitchens was already on a corrective plan. They will be suspended whatever you choose.')}</div>`:''}<p class="mute">${T('Children of a suspended kitchen are redirected to the nearest open kitchens.')}</p>`,
     opts:[['suspend',T('Suspend the kitchen(s) for next semester')],['corrective',T('Keep them open under a corrective plan: a batch per run and handler retraining (paid per kitchen)')],['policy',T('Suspend them, and switch every kitchen in the region to a batch per run')]]}),
   sweep:ev=>({title:T('Enforcement sweep'),body:ev.uncert.length?T('After this semester\'s incidents, the regulator orders every kitchen without a {slhs} suspended. {n} of your open kitchens are uncertified: {list}.',{slhs:g('SLHS',T('hygiene certificate (SLHS)')),n:ev.uncert.length,list:ev.uncert.join(', ')}):T('After this semester\'s incidents, the regulator sweeps for kitchens without a {slhs}. All of your open kitchens hold one.',{slhs:g('SLHS',T('hygiene certificate (SLHS)'))}),
     opts:ev.uncert.length?[['comply',T('Comply: suspend them next semester')],['grace',T('Negotiate a grace period and rush-certify them')]]:[['ok',T('Noted')]]}),
@@ -2597,6 +2622,7 @@ function resultsView(c,review){
   return card(`<h2>${T('{p}: results',{p:periodLabel(y)})}</h2>${pairChart()}
 <div class="kv" style="margin-top:10px"><div>${T('Children fed')} ${info('ledger')}<br><b ${cu(L.reach/100,'pct')}>${pct(L.reach/100)}</b> ${T('of target child-days')}</div><div>${T('Spent')}<br><b ${cu(L.spend,'rp')}>${fmtRp(L.spend)}</b> ${T('of {n}',{n:fmtRp(L.A)})} (${pct(L.absorption)})</div><div>${T('Next semester\'s allocation')} ${info('absorption')}<br><b class="${L.allocNext<1?'bad':''}">${pct(L.allocNext)}</b> ${T('of full coverage')}</div><div>${T('Children ill')} ${info('hazard')}<br><b ${cu(L.victims,'int')}>${num(L.victims)}</b> ${T('in')} ${plural(c.incidents.length,'{n} incident','{n} incidents')}</div><div>${T('Plate value')}<br><b>${L.plateVisible?sc(L.plateTrue):'100%'}</b>${L.plateVisible?'':` <span class="mute">(${T('not audited')})</span>`}</div>${L.fundFrac<0.999?`<div>${T('Service days funded')}<br><b class="bad">${pct(L.fundFrac)}</b></div>`:''}</div>
 ${envelopeSummary(c)}${weatherSummary(c)}${c.events.length?`<h3>${T('Events this semester')}</h3><div class="evlist">${c.events.map(e=>`<div class="evitem ${e.type}">${eventArt(e,'sm')}<div><b>${EVENT_TEXT[e.type](e).title}</b><br><span class="mute">${T('You chose')}: ${choiceLabel(e,e.choice)}</span></div></div>`).join('')}</div>`:''}
+${c.incidents.length?`<h3>${T('Incidents this semester')} ${info('hazard')}</h3>${c.incidents.map(i=>incExplain(i,c)).join('')}`:''}
 ${chains.length?`<h3>${T('Redirect chains')} ${info('pooling')}</h3><p class="mute hint">${T('Trace each suspension to the kitchens that took its children.')}</p>${chains.map(chainHtml).join('')}`:''}
 <h3>${T('Your kitchens this semester')}</h3>${mapsRow(rid=>regencyMap(rid,{ks:statusFromRows(c,rid),arrows:arrowsFor(y,rid)}),true)}<details><summary>${T('Kitchen-by-kitchen detail')}</summary><table><tr><th>${T('Kitchen')}</th><th>${T('Status')}</th><th>${T('Hygiene cert.')}</th><th>${T('Load / cap')}</th><th>${T('Runs')}</th><th>${T('Last run held')}</th><th>${T('Last-run main')}</th><th>${T('Last run safe')}</th><th>${T('Incident')}</th></tr>${rows}</table></details>
 <p class="mute hint">${T('Run seed {s} · derived from your decisions',{s:c.seed})}</p>`+(review?navRow(T('Return to {p} →',{p:periodLabel(G.phase-YEAR_PHASE0)}),true,'A.unreview()'):navRow(y<NP()?nextLbl(YEAR_PHASE0+y+1):nextLbl(YEAR_PHASE0+NP()+1))));
@@ -3203,6 +3229,18 @@ const I18N={
 "last run held {a} → {b} min":{id:"putaran terakhir menunggu {a} → {b} menit"},
 "Second-order incident":{id:"Insiden lanjutan"},
 "{n} ill":{id:"{n} sakit"},
+"Incidents this semester":{id:"Insiden semester ini"},
+"{dow}, run {a} of {b} ({menu}).":{id:"{dow}, putaran {a} dari {b} ({menu})."},
+"Held {h} min · this meal has no safe-window limit":{id:"Menunggu {h} menit · makanan ini tidak punya batas jendela aman"},
+"Held {h} min · safe window for this meal {l} min → not a holding failure":{id:"Menunggu {h} menit · jendela aman makanan ini {l} menit → bukan kegagalan waktu tunggu"},
+"Held {h} min · safe window for this meal {l} min → past it: {p} of this run's portions at risk":{id:"Menunggu {h} menit · jendela aman makanan ini {l} menit → terlewati: {p} porsi putaran ini berisiko"},
+"a run broke the 4-hour rule":{id:"satu putaran melanggar aturan 4 jam"},
+"a delivery leg broke the 30-minute rule":{id:"satu rute pengantaran melanggar aturan 30 menit"},
+"×{m}: {why}.":{id:"×{m}: {why}."},
+"×{m}: kept open under a corrective plan.":{id:"×{m}: tetap buka dengan rencana perbaikan."},
+"Cause: food held past its safe window ({p} of this kitchen's portions over the week were at risk), made worse by process non-compliance ({nc}), on top of the baseline incident rate.":{id:"Penyebab: makanan menunggu melewati jendela amannya ({p} porsi dapur ini selama seminggu berisiko), diperparah ketidakpatuhan prosedur ({nc}), di atas laju insiden dasar."},
+"Crowding multiplied the holding risk by {c}.":{id:"Kepadatan melipatgandakan risiko waktu tunggu sebesar {c}."},
+"Cause: the baseline incident rate, {b} a kitchen-year, which applies even when holding is safe.":{id:"Penyebab: laju insiden dasar, {b} per dapur per tahun, yang tetap berlaku meski waktu tunggu aman."},
 "No second-order incident yet.":{id:"Belum ada insiden lanjutan."},
 "continues {list}":{id:"lanjutan {list}"},
 "What you could not see":{id:"Yang tidak bisa Anda lihat"},
