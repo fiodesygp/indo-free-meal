@@ -2664,7 +2664,12 @@ function trapReport(){
   if(!policy&&(nSusp>=2||(nSusp>=1&&second>0)))out.push([T('The cheap patch'),T('You answered incidents by suspending kitchens {n} time(s) without changing cook-to-serve policy.',{n:nSusp})+' '+(second?T('{n} second-order incident(s) followed in kitchens that took redirected children.',{n:second}):T('No second-order incident fired in this run, but trace the chains below: the receiving kitchens carried more runs and longer holds.'))+' '+T('Closing a kitchen moves its children, and its pressure, next door.')]);
   const tot=sum(Object.values(R.reduce((a,c)=>{for(const[m,u]of Object.entries(c.menuUse)){a[m]=(a[m]||0)+u.portions;}return a;},{})));
   const m7=sum(R.map(c=>(c.menuUse.M7||{portions:0}).portions));
-  if(tot&&m7/tot>=0.5){const up=sum(R.map(c=>(c.menuUse.M7||{up:0}).up))/m7;out.push([T('The dominant-menu check'),T('{p} of your portions were the standard dry pack. Children ate about {u} of it. Nutritional adequacy finished at {n}, food safety at {s}. If this run beat your varied-menu runs overall, the uptake mechanic is not biting hard enough.',{p:pct(m7/tot),u:pct(up),n:sc(finalLedger().nutrition),s:sc(finalLedger().safety)})]);}
+  /* Mostly dry pack: a factual note for the player (the designer's version is in the dev panel, designChecks()). It says
+     the dry pack stayed safe only if none of its incidents was held past its safe window. */
+  if(tot&&m7/tot>=0.5){const up=sum(R.map(c=>(c.menuUse.M7||{up:0}).up))/m7,n=sc(finalLedger().nutrition);
+    const safe=!R.some(c=>c.incidents.some(i=>{if(i.menu!=='M7')return false;const x=incCause(i,c);return x&&x.lam!=null&&x.hold>x.lam;}));
+    out.push([T('Safe, but not eaten'),(m7/tot>=0.999?T('Your menu was the standard dry pack all year.'):T('{p} of your portions were the standard dry pack.',{p:pct(m7/tot)}))+' '+
+      (safe?T('It stayed inside its safe window, but children ate about {u} of each meal, so nutrition delivered fell to {n}.',{u:pct(up),n}):T('Children ate about {u} of each meal, so nutrition delivered fell to {n}.',{u:pct(up),n}))]);}
   /* Incidents with every portion inside its safe window: the baseline rate, not holding (incCause, presentation only). */
   const inWin=R.flatMap(c=>c.incidents.map(i=>incCause(i,c))).filter(x=>x&&(x.lam==null||x.hold<=x.lam)).length;
   if(inWin)out.push([T('Incidents inside the safe window'),T('{n} of your {b} incidents happened with food inside its safe window. A baseline risk remains even when holding is safe.',{n:inWin,b:incs.length})]);
@@ -3182,8 +3187,6 @@ const I18N={
 "Negotiate a grace period and rush-certify them":{id:"Negosiasikan masa tenggang dan percepat sertifikasinya"},
 "Food-poisoning incident":{id:"Insiden keracunan makanan"},
 ", concentrated in one large contract":{id:", terpusat pada satu kontrak besar"},
-"The dominant-menu check":{id:"Uji menu dominan"},
-"{p} of your portions were the standard dry pack. Children ate about {u} of it. Nutritional adequacy finished at {n}, food safety at {s}. If this run beat your varied-menu runs overall, the uptake mechanic is not biting hard enough.":{id:"{p} porsi Anda adalah paket kering standar. Anak-anak memakan sekitar {u} darinya. Kecukupan gizi berakhir di {n}, keamanan pangan di {s}. Jika permainan ini mengalahkan permainan dengan menu beragam secara keseluruhan, mekanisme daya terima belum cukup menggigit."},
 "Price spike: eggs and chicken":{id:"Lonjakan harga: telur dan ayam"},
 "Kitchen demand has pushed farm-gate egg and chicken prices up, and distributors favour buyers who pay cash fast (this happened in late 2025). Affected runs: {runs}.":{id:"Permintaan dapur menaikkan harga telur dan ayam di tingkat peternak, dan distributor mendahulukan pembeli yang cepat bayar tunai (ini terjadi pada akhir 2025). Putaran terdampak: {runs}."},
 "Absorb the higher price this year":{id:"Tanggung harga lebih tinggi tahun ini"},
@@ -3623,6 +3626,11 @@ const I18N={
 "corrective":{id:"perbaikan"},
 "No second-order incident fired in this run, but trace the chains below: the receiving kitchens carried more runs and longer holds.":{id:"Tidak ada insiden lanjutan dalam permainan ini, tetapi telusuri rantai di bawah: dapur penerima menanggung lebih banyak putaran dan waktu tunggu lebih lama."},
 "None of the flagged patterns fired in this run.":{id:"Tidak satu pun pola yang ditandai muncul dalam permainan ini."},
+"Safe, but not eaten":{id:"Aman, tetapi tidak dimakan"},
+"Your menu was the standard dry pack all year.":{id:"Menu Anda adalah paket kering standar sepanjang tahun."},
+"{p} of your portions were the standard dry pack.":{id:"{p} porsi Anda adalah paket kering standar."},
+"It stayed inside its safe window, but children ate about {u} of each meal, so nutrition delivered fell to {n}.":{id:"Makanan itu tetap di dalam jendela amannya, tetapi anak-anak hanya memakan sekitar {u} dari setiap porsi, sehingga gizi yang tersampaikan turun menjadi {n}."},
+"Children ate about {u} of each meal, so nutrition delivered fell to {n}.":{id:"Anak-anak hanya memakan sekitar {u} dari setiap porsi, sehingga gizi yang tersampaikan turun menjadi {n}."},
 "Incidents inside the safe window":{id:"Insiden di dalam jendela aman"},
 "{n} of your {b} incidents happened with food inside its safe window. A baseline risk remains even when holding is safe.":{id:"{n} dari {b} insiden Anda terjadi saat makanan masih di dalam jendela amannya. Risiko dasar tetap ada meski waktu tunggu aman."},
 "No kitchen was suspended.":{id:"Tidak ada dapur yang dihentikan."},
@@ -4093,8 +4101,14 @@ function autoplay(scn){
   }
   const R=G.results;
   return{label:scn.label,years:R.map(c=>({y:c.y,delivered:Math.round(c.ledger.delivered),exposure:Math.round(c.ledger.exposure),cost:Math.round(c.ledger.cost),reach:Math.round(c.ledger.reach),nutrition:Math.round(c.ledger.nutrition),safety:Math.round(c.ledger.safety),absorption:+c.ledger.absorption.toFixed(2),alloc:+c.ledger.allocFrac.toFixed(2),incidents:c.incidents.length,victims:c.ledger.victims})),
-    chains:G.world.chains.length,secondOrder:sum(G.world.chains.map(c=>c.second.length)),traps:trapReport().map(t=>t[0])};
+    chains:G.world.chains.length,secondOrder:sum(G.world.chains.map(c=>c.second.length)),traps:trapReport().map(t=>t[0]),checks:designChecks()};
 }
+/* Designer checks (dev panel and autoplay output only, never shown to players). */
+function designChecks(){const R=G.results||[];if(!R.length)return[];const out=[];
+  const tot=sum(Object.values(R.reduce((a,c)=>{for(const[m,u]of Object.entries(c.menuUse||{})){a[m]=(a[m]||0)+u.portions;}return a;},{})));
+  const m7=sum(R.map(c=>((c.menuUse||{}).M7||{portions:0}).portions)),L=R[R.length-1].ledger;
+  if(tot&&m7/tot>=0.5){const up=sum(R.map(c=>((c.menuUse||{}).M7||{up:0}).up))/m7;out.push(`Dominant-menu check: ${Math.round(100*m7/tot)}% of portions were the standard dry pack; children ate about ${Math.round(100*up)}% of it. Nutrition finished at ${Math.round(L.nutrition)}, food safety at ${Math.round(L.safety)}, overall ${Math.round(L.score)}. If this run beat the varied-menu control (SCENARIOS.variedMenu) overall, the uptake mechanic is not biting hard enough.`);}
+  return out;}
 function runScenarios(){const out={};for(const[k,s]of Object.entries(SCENARIOS))out[k]=autoplay(s);return out;}
 /* Autoplay per chapter: each runs the chapter's engine on a few preset decision sets and reports the results.
    animSec is the run animation's length at 1× (it excludes the player's thinking time). */
@@ -4115,8 +4129,8 @@ function autoplayChapter(n){const ch=G.chapter,out=CH_AUTOPLAY[n]?CH_AUTOPLAY[n]
 function devStatus(){
   const has=n=>typeof document!=='undefined'&&document.fonts&&[...document.fonts].some(f=>f.family.replace(/["']/g,'')===n&&f.status==='loaded');
   const font=typeof document==='undefined'||!document.fonts?'Font status unavailable.':['Maison Neue','Maison Neue Extended'].map(n=>n+(has(n)?': installed and in use':': not installed, fallback showing')).join(' · ')+'. To embed the licensed files, see the @font-face note at the top of the style block.';
-  const miss=[...T.missing];
-  return`<p class="mute">Typeface: ${font}</p><p class="mute">Language: ${LANG}. ${miss.length?`${miss.length} string(s) shown so far have no translation and fall back to English:</p><pre style="font-size:12px;white-space:pre-wrap">${esc(miss.join('\n'))}</pre>`:'Every string shown so far has a translation.</p>'}`;
+  const miss=[...T.missing],chk=designChecks();
+  return`<p class="mute">Typeface: ${font}</p><p class="mute">Language: ${LANG}. ${miss.length?`${miss.length} string(s) shown so far have no translation and fall back to English:</p><pre style="font-size:12px;white-space:pre-wrap">${esc(miss.join('\n'))}</pre>`:'Every string shown so far has a translation.</p>'}${chk.length?`<p class="mute"><b>Design checks for this run:</b></p><ul class="mute">${chk.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}`;
 }
 function devPanel(){
   const rows=Object.entries(PARAMS).map(([id,p])=>`<tr><td><code>${id}</code></td><td>${p.v}</td><td>${p.unit}</td><td><span class="tag ${p.src[0]}">${p.src}</span></td><td>${esc(p.note)}</td></tr>`).join('');
