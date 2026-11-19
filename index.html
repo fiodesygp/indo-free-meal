@@ -2070,7 +2070,7 @@ function meterHtml(){
   const food=r=>{const m=/\(([^)]+)\)/.exec(r.comp.name);return m?m[1]:compName(r.comp);};  // the dish's local name, as in "opor ayam"
   const why=lv==='beginner'&&worst.lam!=null?`<p class="hm-why">${T('{run}: {food} held {h} min vs λ {l} → {p} of portions at risk.',{run:label(worst),food:food(worst),h:num(worst.hold),l:num(worst.lam),p:pct(1-worst.S)})}</p>`:'';
   const fresh=!!changed;
-  const chips=`<div class="kv hm-kv"><div>${T('Tightest slack')}<br><b>${cur.slack==null?'–':num(cur.slack)+' '+T('min')}</b>${dchip(dl.slack,1,x=>num(x),fresh)}</div><div>${T('Portions at risk')}<br><b>${num(cur.risk)}</b>${dchip(dl.risk,-1,x=>num(x),fresh)}<small> ${G.chapter===3?T('this morning'):T('a day, all planned kitchens')}</small></div><div>${T('Cost')}<br><b>${G.chapter===3?rpFull(cur.cost):fmtRp(cur.cost)}</b>${dchip(dl.cost,-1,x=>G.chapter===3?rpFull(x):fmtRp(x),fresh)}<small> ${G.chapter===3?T('food, this morning'):T('a day, all planned kitchens')}</small></div></div>`;
+  const chips=`<div class="kv hm-kv"><div>${T('Tightest slack')}<br><b>${cur.slack==null?'–':num(cur.slack)+' '+T('min')}</b>${dchip(dl.slack,1,x=>num(x),fresh)}</div><div>${T('Portions at risk')}<br><b>${num(cur.risk)}</b>${dchip(dl.risk,-1,x=>num(x),fresh)}<small> ${G.chapter===3?T('this morning'):T('a day, all planned kitchens')}</small></div><div>${T('Cost')}<br><b>${G.chapter===3?rpFull(cur.cost):fmtRp(cur.cost)}</b>${dchip(dl.cost,-1,x=>G.chapter===3?rpFull(x):fmtRp(x),fresh)}<small> ${G.chapter===3?T('food, this morning'):`${T('a day')} · ${T('assumes all planned kitchens open')}`}</small></div></div>`;
   const formula=lv==='advanced'?`<details class="hm-f"><summary>${T('Safety formula and parameters')}</summary><p><code>S(t) = 1</code> ${T('for t ≤ λ, otherwise')} <code>S(t) = 0.5^((t − λ) / h)</code></p><table><tr><th>${T('Run')}</th><th>${T('Weakest component')}</th><th>t</th><th>λ</th><th>h</th><th>S</th></tr>${f.rows.map(r=>`<tr><td>${label(r)}</td><td>${r.comp?compName(r.comp):'–'}</td><td>${num(r.hold)}</td><td>${r.lam==null?'–':num(r.lam)}</td><td>${r.h==null?'–':num(r.h)}</td><td>${pct(r.S)}</td></tr>`).join('')}</table></details>`:'';
   const tight=f.rows.filter(r=>r.slack<SLACK_HINT).sort((a,b)=>a.slack-b.slack)[0];
   const hintTxt=tight?`${tight.slack>=0?T('{run} has {m} min of slack before {food} starts to spoil.',{run:label(tight),m:Math.round(tight.slack),food:food(tight)}):T('{run} is held {m} min past λ for {food}.',{run:label(tight),m:Math.round(-tight.slack),food:food(tight)})} ${T(G.chapter===3?'To buy time: put a sturdier meal on the later runs, or send fewer runs.':'To buy time: give that day a sturdier meal, cook again before each run, add vehicles, or tighten the cluster radius.')}`:'';
@@ -3008,6 +3008,8 @@ const I18N={
 "this morning":{id:"pagi ini"},
 "food, this morning":{id:"bahan makanan, pagi ini"},
 "a day, all planned kitchens":{id:"per hari, semua dapur yang direncanakan"},
+"a day":{id:"per hari"},
+"assumes all planned kitchens open":{id:"dengan asumsi semua dapur yang direncanakan beroperasi"},
 "Safety formula and parameters":{id:"Rumus keamanan dan parameternya"},
 "for t ≤ λ, otherwise":{id:"untuk t ≤ λ, selain itu"},
 "Hint":{id:"Petunjuk"},
