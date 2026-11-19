@@ -16,6 +16,9 @@
 // 5. Reproducibility: every trap scenario gives the identical run cold (a fresh page per trap) and after two different
 //    warm-ups in one page (the traps on 50 salted seeds; Stage 1 and Stage 2 autoplay), so the same decisions always
 //    give the same run, however long the page has been running.
+// 7. Header ledger: every trap scenario is played through the real Run screen, at every step of every semester's run
+//    (its start, each event popup, the end card), the header still shows the previous semester's ledger (note,
+//    scores and chips), whether or not a popup comes up; once the end card is closed it shows this semester's.
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -137,6 +140,25 @@ const WARM = {
   'after the traps on 50 salted seeds': `(()=>{const M=window.MBG,dv0=window.decisionVector;try{for(const k of Object.keys(M.SCENARIOS))for(let i=0;i<50;i++){window.decisionVector=s=>dv0(s)+'#warm'+i;M.autoplay(M.SCENARIOS[k]);}}finally{window.decisionVector=dv0;}})()`,
   'after Stage 1 and Stage 2 autoplay': `(()=>{const M=window.MBG;M.autoplayChapter(3);M.autoplayChapter(4);M.autoplayChapter(3);M.autoplayChapter(4);})()`,
 };
+// 7. Run inside the page.
+const HDR = `(async()=>{const M=window.MBG,fail=[];let steps=0,popups=0;const sl=ms=>new Promise(r=>setTimeout(r,ms));G.carry.level='advanced';
+  const sig=()=>{const h=document.getElementById('hdr');return JSON.stringify({note:(h.querySelector('.lednote')||{}).textContent,
+    cu:[...h.querySelectorAll('.ledger [data-cu]')].map(e=>e.dataset.cu),chips:[...h.querySelectorAll('.dchip')].map(e=>e.textContent)});};
+  for(const[k,scn]of Object.entries(M.SCENARIOS)){
+    G.chapter=5;resetGame();setChapter(5);G.dec=Object.assign(clone(BASE_DEC),clone(scn.dec||{}));initWorld();
+    const pick=ev=>{const o=EVENT_TEXT[ev.type](ev).opts.map(x=>x[0]),w=(scn.choose||{})[ev.type];return o.includes(w)?w:o[0];};
+    for(let y=1;y<=NP();y++){
+      G.phase=YEAR_PHASE0+y;G.ctx=null;G.draft=Object.assign(defaultPlan(y),scn.plan?clone(scn.plan(y)):{});render();
+      const before=sig(),chk=at=>{steps++;const now=sig();if(now!==before)fail.push(k+', Semester '+y+', '+at+': the header changed before the run finished ('+now+')');};
+      A.commitPlan();await sl(5);chk('start of the run');const a=G.anim;let n=0;
+      while(n++<200){const q=G.ctx.queue;
+        if(a.blocked&&q.length){popups++;A.simChoose(pick(q[0]));await sl(5);chk('after a popup');continue;}
+        if(a.done)break;A.simSkip();await sl(5);chk(a.done?'end card':'mid-run');}
+      if(!a.done||G.ctx.queue.length)fail.push(k+', Semester '+y+': the run did not reach its end card');
+      A.simDone();const after=JSON.parse(sig()),L=G.results[y-1].ledger;
+      if(after.note!==T('Ledger after {p}',{p:periodLabel(y)}))fail.push(k+', Semester '+y+': after the run the header note is "'+after.note+'"');
+      if(!after.cu.includes(String(L.delivered)))fail.push(k+', Semester '+y+': after the run the header does not show the ledger of this semester');}}
+  return{fail,steps,popups};})()`;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const port = 9500 + Math.floor(Math.random() * 400);
 const prof = mkdtempSync(join(tmpdir(), 'mbg-test-'));
@@ -174,8 +196,10 @@ try {
     for (const k of keys) { const got = await evalPage(`${FP}(${JSON.stringify(k)})`), bad = got.map((g, i) => g !== cold[k][i] ? (i ? 'salt ' + (i - 1) : 'its own seed') : null).filter(Boolean);
       if (bad.length) fail.push(`scenario "${k}" gives a different run ${label} than cold (${bad.length} of ${got.length} seeds: ${bad.slice(0, 3).join(', ')}${bad.length > 3 ? '…' : ''})`); }
   }
+  // 7. Header ledger on the Run screen.
+  await load(); const hdr = await evalPage(HDR); fail.push(...hdr.fail);
   fail.push(...errors.map(e => 'page error: ' + e));
   if (fail.length) { console.error('FAIL\n- ' + fail.join('\n- ')); }
-  else { console.log(`PASS: ${scenarios} scenarios identical at all three levels with no level reads; ${forecasts} forecasts per level identical, no level reads, no seed, no Math.random, decisions unchanged; played through the plan page at all three levels with the level gating on: identical results, no engine level reads, unlocks fixed by level whatever the incidents (beginner safety open by semester: ${Object.entries(opened).map(([k, v]) => k + ' ' + v).join(', ')}); every trap gives the identical run cold and after ${Object.keys(WARM).length} warm-ups; the Meals forecast equals the engine's planned Meals cost in all ${mealChecks.planned} trap semesters, and the charged cost in the ${mealChecks.calm} with no disruption.`); code = 0; }
+  else { console.log(`PASS: ${scenarios} scenarios identical at all three levels with no level reads; ${forecasts} forecasts per level identical, no level reads, no seed, no Math.random, decisions unchanged; played through the plan page at all three levels with the level gating on: identical results, no engine level reads, unlocks fixed by level whatever the incidents (beginner safety open by semester: ${Object.entries(opened).map(([k, v]) => k + ' ' + v).join(', ')}); every trap gives the identical run cold and after ${Object.keys(WARM).length} warm-ups; the Meals forecast equals the engine's planned Meals cost in all ${mealChecks.planned} trap semesters, and the charged cost in the ${mealChecks.calm} with no disruption; on the Run screen the header kept the previous semester's ledger at all ${hdr.steps} steps before each run finished (${hdr.popups} event popups).`); code = 0; }
 } catch (e) { console.error('FAIL: ' + e.message); }
 finally { try { ws && ws.close(); } catch {} chrome.kill(); await sleep(300); try { rmSync(prof, { recursive: true, force: true }); } catch {} process.exit(code); }
