@@ -2655,10 +2655,12 @@ function incCauseList(R){const xs=R.flatMap(c=>c.incidents.map(i=>incCause(i,c))
 /* The cheap patch, per incident: incidents answered with Suspend and not followed by a cook-to-serve policy change
    in that province. A change is the popup's policy fix for that province later on, or, in the next semester's plan,
    switching the province to a fresh batch per run or serving a different meal on the incident's weekday. Incidents
-   in the last semester are left out: no plan follows them. */
+   in the last semester are left out: no plan follows them. So are incidents inside the safe window (incCause): they
+   are not a cook-to-serve failure, so no cook-to-serve change was owed. */
 function unfixedSuspensions(){const R=G.results||[],out=[];
   for(const c of R)for(const ev of (c.events||[]).filter(e=>e.type==='incident'&&e.choice==='suspend'))for(const i of ev.list){
     const prev=G.plans[c.y-1],next=G.plans[c.y];if(!prev||!next)continue;
+    const x=incCause(i,c);if(!x||x.lam==null||x.hold<=x.lam)continue;
     const batch=prev.batch[i.rid]!=='staggered'&&next.batch[i.rid]==='staggered',menu=next.menu[i.dow||0].m!==i.menu;
     const popup=R.some(c2=>c2.y>c.y&&(c2.events||[]).some(e=>e.type==='incident'&&e.choice==='policy'&&e.list.some(j=>j.rid===i.rid)));
     if(!batch&&!menu&&!popup)out.push(Object.assign({},i,{y:c.y}));}
