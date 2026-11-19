@@ -2197,8 +2197,14 @@ function c3Results(){const o=G.wu.res;
 ${calcTable([[T(DIMS.reach),`${num(o.fed)} ÷ ${num(o.cap)}`,sc(o.reach)],[T(DIMS.nutrition),T('Σ children × menu fit × nutrient score ÷ children fed'),sc(o.nutrition)],[T(PAIRS.delivered.label),`(${sc(o.reach)} + ${sc(o.nutrition)}) ÷ 2`,`<b>${sc(o.delivered)}</b>`,'tot'],
 [T(DIMS.safety),`100 × (1 − ${num(o.risk)} ÷ ${num(o.fed)})`,`<b>${sc(o.safety)}</b>`,'tot'],
 [T('Food cost per portion'),`${rpFull(Math.round(o.food))} ÷ ${num(o.fed)} (${T('ceiling {c}',{c:rpFull(P('FOOD_CEILING'))})})`,rpFull(Math.round(o.foodAvg))]])}
-${o.runs.filter(r=>r.overLimit).map(r=>`<p class="wuverdict bad">${T('Run {n} broke the 4-hour rule: {c} children ate {m} minutes after cooking ended, past the {l}-minute limit.',{n:r.i+1,c:num(r.portions),m:Math.round(r.hold),l:P('HOLD_LIMIT_MIN')})}</p>`).join('')}<p class="wuverdict ${o.risk>=1?'bad':'good'}">${o.risk>=1?T(num(o.ill)==='1'?'About {n} child could fall ill: {p} of the portions at risk, the simulation\'s attack rate.':'About {n} children could fall ill: {p} of the portions at risk, the simulation\'s attack rate.',{n:num(o.ill),p:pct(P('ATTACK_RATE'))}):T('Every child ate inside the safe window.')}</p>${c3Timeline(o,c3End(o))}`)+`</div>`;}
+${o.runs.filter(r=>r.overLimit).map(r=>`<p class="wuverdict bad">${T('Run {n} broke the 4-hour rule: {c} children ate {m} minutes after cooking ended, past the {l}-minute limit.',{n:r.i+1,c:num(r.portions),m:Math.round(r.hold),l:P('HOLD_LIMIT_MIN')})}</p>`).join('')}<p class="wuverdict ${o.risk>=1?'bad':'good'}">${o.risk>=1?o.ill<0.5?c3Chance(o.risk):T(num(o.ill)==='1'?'About {n} child could fall ill: {p} of the portions at risk, the simulation\'s attack rate.':'About {n} children could fall ill: {p} of the portions at risk, the simulation\'s attack rate.',{n:num(o.ill),p:pct(P('ATTACK_RATE'))}):T('Every child ate inside the safe window.')}</p>${c3Timeline(o,c3End(o))}`)+`</div>`;}
 
+/* Stage 1 verdict when fewer than half a child is expected to fall ill but at least one portion is at risk: the chance
+   that at least one child falls ill, 1 − (1 − ATTACK_RATE)^n for the n portions shown. EN picks "a" or "an" from the
+   rounded percentage (an 8%, an 11%, an 18%, an 80–89%). Display only. */
+function c3Chance(risk){const n=Math.round(risk),x=Math.round(100*(1-Math.pow(1-P('ATTACK_RATE'),n))),an=x===8||x===11||x===18||(x>=80&&x<=89);
+  return T(n===1?(an?'{n} portion is at risk: about an {x} chance a child falls ill.':'{n} portion is at risk: about a {x} chance a child falls ill.')
+    :(an?'{n} portions are at risk: about an {x} chance at least one child falls ill.':'{n} portions are at risk: about a {x} chance at least one child falls ill.'),{n:num(n),x:x+'%'});}
 /* ---------- Set-up page 1: priorities + posture ---------- */
 const head=(n,t)=>`<h2><span class="num">${n}</span>${t}</h2>`;
 const rampBars=post=>{const r=[1,2,3,4].map(p=>rampAt(post,p));return`<svg viewBox="0 0 176 56" width="176" height="56">${r.map((v,i)=>`<rect class="grow" x="${i*44+6}" y="${38-v*34}" width="28" height="${v*34}" rx="2" fill="#007D0E" opacity="${.4+.2*i}"><title>${pct(v)}</title></rect><text x="${i*44+20}" y="52" font-size="12" text-anchor="middle" fill="#5E6368">${periodShort(i+1)}</text>`).join('')}</svg>`;};
@@ -3161,6 +3167,10 @@ const I18N={
 "Σ children × menu fit × nutrient score ÷ children fed":{id:"Σ anak × kecocokan menu × skor gizi ÷ anak yang makan"},
 "About {n} children could fall ill: {p} of the portions at risk, the simulation's attack rate.":{id:"Sekitar {n} anak bisa jatuh sakit: {p} dari porsi berisiko, tingkat serangan dalam simulasi ini."},
 "About {n} child could fall ill: {p} of the portions at risk, the simulation's attack rate.":{id:"Sekitar {n} anak bisa jatuh sakit: {p} dari porsi berisiko, tingkat serangan dalam simulasi ini."},
+"{n} portion is at risk: about a {x} chance a child falls ill.":{id:"{n} porsi berisiko: peluang sekitar {x} seorang anak jatuh sakit."},
+"{n} portion is at risk: about an {x} chance a child falls ill.":{id:"{n} porsi berisiko: peluang sekitar {x} seorang anak jatuh sakit."},
+"{n} portions are at risk: about a {x} chance at least one child falls ill.":{id:"{n} porsi berisiko: peluang sekitar {x} setidaknya satu anak jatuh sakit."},
+"{n} portions are at risk: about an {x} chance at least one child falls ill.":{id:"{n} porsi berisiko: peluang sekitar {x} setidaknya satu anak jatuh sakit."},
 "Every child ate inside the safe window.":{id:"Setiap anak makan dalam batas aman."},
 "Runs delivered":{id:"Pengantaran tiba"},
 "Morning complete":{id:"Pagi selesai"},
