@@ -9,6 +9,9 @@
 // 4. The same scenarios played through the semester plan page with the level's gating: each decision group opens
 //    in its level's fixed semester whatever the incidents, rendering never changes the plan, the engine never reads the level,
 //    and the plans handed to the engine and the results are identical at every level.
+// 5. Reproducibility: every trap scenario gives the identical run cold (a fresh page per trap) and after two different
+//    warm-ups in one page (the traps on 50 salted seeds; Stage 1 and Stage 2 autoplay), so the same decisions always
+//    give the same run, however long the page has been running.
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -110,6 +113,17 @@ const IN_PAGE = async () => {
   return { fail, scenarios: Object.keys(M.SCENARIOS).length, forecasts: JSON.parse(forecasts.beginner).length, opened: opened.beginner };
 };
 
+// 5. Fingerprint of one trap's run, and the warm-ups. Run inside the page.
+//    Each trap is fingerprinted on its own seed and on 20 salted seeds, so the rarer paths (floods, redirects) are hit.
+const FP = `(k=>{const M=window.MBG,dv0=window.decisionVector,out=[];M.G.carry.level='advanced';
+  try{for(let i=-1;i<20;i++){window.decisionVector=i<0?dv0:s=>dv0(s)+'#fp'+i;const r=M.autoplay(M.SCENARIOS[k]),G=M.G;
+    out.push(JSON.stringify({r,ledger:G.results.map(c=>c.ledger),seeds:G.results.map(c=>c.seed),events:G.eventLog,incidents:G.results.map(c=>c.incidents),
+      weather:G.results.map(c=>c.weather),chains:G.world.chains}));}}finally{window.decisionVector=dv0;}
+  return out;})`;
+const WARM = {
+  'after the traps on 50 salted seeds': `(()=>{const M=window.MBG,dv0=window.decisionVector;try{for(const k of Object.keys(M.SCENARIOS))for(let i=0;i<50;i++){window.decisionVector=s=>dv0(s)+'#warm'+i;M.autoplay(M.SCENARIOS[k]);}}finally{window.decisionVector=dv0;}})()`,
+  'after Stage 1 and Stage 2 autoplay': `(()=>{const M=window.MBG;M.autoplayChapter(3);M.autoplayChapter(4);M.autoplayChapter(3);M.autoplayChapter(4);})()`,
+};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const port = 9500 + Math.floor(Math.random() * 400);
 const prof = mkdtempSync(join(tmpdir(), 'mbg-test-'));
@@ -129,13 +143,26 @@ try {
     if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
   });
   await send('Runtime.enable'); await send('Page.enable');
-  await send('Page.navigate', { url: pathToFileURL(join(ROOT, 'index.html')).href });
-  for (let k = 0; k < 50; k++) { const r = await send('Runtime.evaluate', { expression: '!!(window.MBG&&window.forecast)', returnByValue: true }); if (r.result.result.value) break; await sleep(200); }
+  const load = async () => {
+    await send('Page.navigate', { url: pathToFileURL(join(ROOT, 'index.html')).href });
+    for (let k = 0; k < 50; k++) { const r = await send('Runtime.evaluate', { expression: '!!(window.MBG&&window.forecast)&&document.readyState==="complete"', returnByValue: true }); if (r.result.result.value) break; await sleep(200); }
+  };
+  const evalPage = async expression => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, timeout: 240000 });
+    if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text); return r.result.result.value; };
+  await load();
   const r = await send('Runtime.evaluate', { expression: `(${IN_PAGE})()`, awaitPromise: true, returnByValue: true, timeout: 240000 });
   if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
   const { fail, scenarios, forecasts, opened } = r.result.result.value;
+  // 5. Reproducibility across warm-ups.
+  const keys = await evalPage('Object.keys(window.MBG.SCENARIOS)'), cold = {};
+  for (const k of keys) { await load(); cold[k] = await evalPage(`${FP}(${JSON.stringify(k)})`); }
+  for (const [label, warm] of Object.entries(WARM)) {
+    await load(); await evalPage(warm);
+    for (const k of keys) { const got = await evalPage(`${FP}(${JSON.stringify(k)})`), bad = got.map((g, i) => g !== cold[k][i] ? (i ? 'salt ' + (i - 1) : 'its own seed') : null).filter(Boolean);
+      if (bad.length) fail.push(`scenario "${k}" gives a different run ${label} than cold (${bad.length} of ${got.length} seeds: ${bad.slice(0, 3).join(', ')}${bad.length > 3 ? '…' : ''})`); }
+  }
   fail.push(...errors.map(e => 'page error: ' + e));
   if (fail.length) { console.error('FAIL\n- ' + fail.join('\n- ')); }
-  else { console.log(`PASS: ${scenarios} scenarios identical at all three levels with no level reads; ${forecasts} forecasts per level identical, no level reads, no seed, no Math.random, decisions unchanged; played through the plan page at all three levels with the level gating on: identical results, no engine level reads, unlocks fixed by level whatever the incidents (beginner safety open by semester: ${Object.entries(opened).map(([k, v]) => k + ' ' + v).join(', ')}).`); code = 0; }
+  else { console.log(`PASS: ${scenarios} scenarios identical at all three levels with no level reads; ${forecasts} forecasts per level identical, no level reads, no seed, no Math.random, decisions unchanged; played through the plan page at all three levels with the level gating on: identical results, no engine level reads, unlocks fixed by level whatever the incidents (beginner safety open by semester: ${Object.entries(opened).map(([k, v]) => k + ' ' + v).join(', ')}); every trap gives the identical run cold and after ${Object.keys(WARM).length} warm-ups.`); code = 0; }
 } catch (e) { console.error('FAIL: ' + e.message); }
 finally { try { ws && ws.close(); } catch {} chrome.kill(); await sleep(300); try { rmSync(prof, { recursive: true, force: true }); } catch {} process.exit(code); }
