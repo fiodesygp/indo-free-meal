@@ -6,8 +6,8 @@
 // 2. While the engine plays, the level is never read (G.carry.level is a counting getter).
 // 3. The forecast never reads the level, never builds the decision-vector seed (decisionVector) or touches
 //    Math.random, gives the same result at every level, and leaves the decisions unchanged.
-// 4. The same scenarios played through the semester plan page with the level's gating (including the incident-
-//    triggered unlock of safety and controls): rendering never changes the plan, the engine never reads the level,
+// 4. The same scenarios played through the semester plan page with the level's gating: each decision group opens
+//    in its level's fixed semester whatever the incidents, rendering never changes the plan, the engine never reads the level,
 //    and the plans handed to the engine and the results are identical at every level.
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -77,12 +77,11 @@ const IN_PAGE = async () => {
   if (!JSON.parse(forecasts.beginner).every(f => f && f.rows.length)) fail.push('forecast returned no runs');
 
   // 4. The same scenarios played through the semester plan page, as a player would: the page renders each plan at the
-  //    level (the gating reads it, including the incident-triggered unlock), then the engine runs it. The page fills in
+  //    level (the gating reads it), then the engine runs it. The page fills in
   //    the default budget split, as it does for every player, so the plan it hands the engine must be identical at
-  //    every level; the engine calls must read the level zero times; and the results must be identical at every level. The incident trigger must open safety and controls the semester after the first incident or
-  //    suspension, if that is sooner than the level's own semester.
+  //    every level; the engine calls must read the level zero times; and the results must be identical at every level.
+  //    Each group must open in the fixed semester LV_UNLOCK gives, whatever incidents happened (no early unlock).
   const ui = {}, opened = {}, plans = {};
-  let early = 0;
   for (const lv of LEVELS) {
     trapLevel(); value = lv; ui[lv] = {}; opened[lv] = {}; plans[lv] = {};
     for (const [k, scn] of Object.entries(M.SCENARIOS)) {
@@ -96,11 +95,7 @@ const IN_PAGE = async () => {
         if (lv !== 'beginner' && plans[lv][k + y] !== plans.beginner[k + y]) fail.push(`scenario "${k}": the Semester ${y} plan page left a different plan at "${lv}" than at beginner`);
         open.push(unlockAt('safety') <= y ? 1 : 0);
         if (y > 1 && unlockAt('safety') === y && !document.querySelector('.unlockcard')) fail.push(`scenario "${k}" at "${lv}": safety opened in Semester ${y} without its card`);
-        if (lv === 'beginner') {
-          const t = troubleAt(), want = Math.min(LV_UNLOCK.beginner.safety, t == null ? Infinity : t + 1);
-          if (unlockAt('safety') !== want) fail.push(`scenario "${k}": beginner safety opens in Semester ${unlockAt('safety')}, expected ${want}`);
-          if (y === want && want < LV_UNLOCK.beginner.safety) { early++; if (!unlockedEarly('safety')) fail.push(`scenario "${k}": early unlock not flagged`); }
-        }
+        for (const g of ['activation', 'menu', 'delivery', 'safety']) if (unlockAt(g) !== LV_UNLOCK[lv][g]) fail.push(`scenario "${k}" at "${lv}": ${g} opens in Semester ${unlockAt(g)}, not the fixed Semester ${LV_UNLOCK[lv][g]}`);
         reads = 0;
         G.plans[y - 1] = clone(G.draft); G.draft = null; beginYear(y, G.plans[y - 1]);
         while (G.ctx.stage !== 'results') { const ev = G.ctx.queue[0]; const opts = EVENT_TEXT[ev.type](ev).opts.map(o => o[0]); const want = (scn.choose || {})[ev.type]; resolveEvent(opts.includes(want) ? want : opts[0]); }
@@ -112,8 +107,7 @@ const IN_PAGE = async () => {
   }
   for (const k of Object.keys(M.SCENARIOS)) for (const lv of LEVELS.slice(1))
     if (ui[lv][k] !== ui.beginner[k]) fail.push(`scenario "${k}" through the plan page: results differ between beginner and ${lv}`);
-  if (!early) fail.push('no scenario exercised the incident-triggered unlock');
-  return { fail, scenarios: Object.keys(M.SCENARIOS).length, forecasts: JSON.parse(forecasts.beginner).length, early, opened: opened.beginner };
+  return { fail, scenarios: Object.keys(M.SCENARIOS).length, forecasts: JSON.parse(forecasts.beginner).length, opened: opened.beginner };
 };
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -139,9 +133,9 @@ try {
   for (let k = 0; k < 50; k++) { const r = await send('Runtime.evaluate', { expression: '!!(window.MBG&&window.forecast)', returnByValue: true }); if (r.result.result.value) break; await sleep(200); }
   const r = await send('Runtime.evaluate', { expression: `(${IN_PAGE})()`, awaitPromise: true, returnByValue: true, timeout: 240000 });
   if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
-  const { fail, scenarios, forecasts, early, opened } = r.result.result.value;
+  const { fail, scenarios, forecasts, opened } = r.result.result.value;
   fail.push(...errors.map(e => 'page error: ' + e));
   if (fail.length) { console.error('FAIL\n- ' + fail.join('\n- ')); }
-  else { console.log(`PASS: ${scenarios} scenarios identical at all three levels with no level reads; ${forecasts} forecasts per level identical, no level reads, no seed, no Math.random, decisions unchanged; played through the plan page at all three levels with the level gating on: identical results, no engine level reads, incident-triggered unlock fired in ${early} scenario(s) (beginner safety open by semester: ${Object.entries(opened).map(([k, v]) => k + ' ' + v).join(', ')}).`); code = 0; }
+  else { console.log(`PASS: ${scenarios} scenarios identical at all three levels with no level reads; ${forecasts} forecasts per level identical, no level reads, no seed, no Math.random, decisions unchanged; played through the plan page at all three levels with the level gating on: identical results, no engine level reads, unlocks fixed by level whatever the incidents (beginner safety open by semester: ${Object.entries(opened).map(([k, v]) => k + ' ' + v).join(', ')}).`); code = 0; }
 } catch (e) { console.error('FAIL: ' + e.message); }
 finally { try { ws && ws.close(); } catch {} chrome.kill(); await sleep(300); try { rmSync(prof, { recursive: true, force: true }); } catch {} process.exit(code); }

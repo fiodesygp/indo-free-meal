@@ -2002,15 +2002,8 @@ const LV=()=>G.carry.level||'advanced';
    last and extra vehicles; safety = inspectors, training, SLHS and audit. Build-time decisions are always open.
    Beginner opens the menu and delivery timing together: they are coupled through holding minutes. */
 const LV_UNLOCK={beginner:{activation:1,menu:2,delivery:2,safety:3},intermediate:{activation:2,delivery:2,menu:2,safety:2},advanced:{activation:1,delivery:1,menu:1,safety:1}};
-/* Event-triggered unlock: an incident or a suspension before safety and controls are open opens them at the start of
-   the next semester, so the player always has a lever to respond with. It reads only completed semesters' results
-   (presentation); the engine never sees it. Returns the first semester with an incident or a suspension, or null. */
-function troubleAt(){const w=G.world,c=(G.results||[]).find(c=>c.incidents.length||(w&&w.chains.some(ch=>ch.year===c.y+1)));return c?c.y:null;}
-function unlockAt(g){if(G.chapter!==5)return 1;const n=LV_UNLOCK[LV()][g];if(g!=='safety')return n;const t=troubleAt();return t!=null&&t+1<n?t+1:n;}
-const unlockedEarly=g=>G.chapter===5&&unlockAt(g)<LV_UNLOCK[LV()][g];
-/* Lock text. Safety can still open early (after an incident), so its lock says so while that can happen. */
-const canOpenEarly=(g,y)=>g==='safety'&&G.chapter===5&&unlockAt(g)>(y||1)+1;
-const lockText=(g,y)=>canOpenEarly(g,y)?T('Using default — unlocks in Semester {n}, or the semester after an incident or a suspension',{n:unlockAt(g)}):T('Using default — unlocks in Semester {n}',{n:unlockAt(g)});
+const unlockAt=g=>G.chapter===5?LV_UNLOCK[LV()][g]:1;
+const lockText=g=>T('Using default — unlocks in Semester {n}',{n:unlockAt(g)});
 const lockNote=g=>`<div class="lockrow">${lockIcon()}<span>${lockText(g)}</span></div>`;
 /* Stage 3 start: pre-fill what the level asks for. Intermediate and Beginner get the region and kitchens (the second
    province, its first regency, the default kitchen set-up); Beginner also gets the posture and the sourcing. Stage 2's
@@ -2266,7 +2259,7 @@ VIEWS.setup2=()=>{const two=G.dec.regions.length===CH().regions;
 VIEWS.kitchens=()=>`<div class="fade"><p class="lead pagelead">${CH().regions===1?T('Set up the kitchens in your regency. The defaults are a reasonable start; change them only if you want to.'):T('Set up the kitchens in each regency. The defaults are a reasonable start; change them only if you want to.')}</p>${G.dec.regions.map((rid,i)=>regionPanel(rid,String(i+1))).join('')}</div>${regencyModal()}`+navRow(nextLbl(shownPhase()+1));
 /* Stage 3: what the semester plans hold, by level. */
 function laterNote(){const g=[['activation','How many kitchens open'],['delivery','Delivery timing'],['menu','Weekly menu'],['safety','Safety and controls']].filter(([k])=>unlockAt(k)>1);
-  return g.length?`<ul>${g.map(([k,l])=>`<li>${T(l)}: ${canOpenEarly(k)?T('unlocks in Semester {n}, or the semester after an incident or a suspension',{n:unlockAt(k)}):T('unlocks in Semester {n}',{n:unlockAt(k)})}</li>`).join('')}</ul><p>${T('Until then they run on sensible defaults.')}</p>`:`<p>${T('Delivery timing, the weekly menu, and safety and controls (including controls against leakage) are set in each semester\'s plan, from Semester 1.')}</p>`;}
+  return g.length?`<ul>${g.map(([k,l])=>`<li>${T(l)}: ${T('unlocks in Semester {n}',{n:unlockAt(k)})}</li>`).join('')}</ul><p>${T('Until then they run on sensible defaults.')}</p>`:`<p>${T('Delivery timing, the weekly menu, and safety and controls (including controls against leakage) are set in each semester\'s plan, from Semester 1.')}</p>`;}
 VIEWS.sourcing=()=>`<div class="fade">${secSourcing(1)}${card(`<div class="locknote">${lockIcon()}<div>${G.chapter===4?`<b>${T('In Stage 3')}</b><p>${T('Controls against leakage and delivery timing (cooking batches, who eats last, extra vehicles) come in Stage 3. Here they run on sensible defaults.')}</p>`:`<b>${T('Later in the run')}</b>${laterNote()}`}</div></div>`,'ghostcard')}</div>`+navRow(nextLbl(shownPhase()+1),!!G.dec.sourcing.arch);
 
 /* ---------- Set-up page: budget ----------
@@ -2365,13 +2358,13 @@ ${timelineSvg(p.menu,{batch:p.batch,lastRun:p.lastRun,extraFleet:p.extraFleet})}
   const menuLine=WEEK().map(d=>`<span><b>${dayName(d).slice(0,3)}</b> ${menuName(p.menu[d].m).split(' · ')[0]}</span>`).join('');
   const recap=prev?`<div class="recap"><h3>${T('Last semester')}</h3><div class="kv"><div>${T('Children fed')}<br><b>${pct(prev.ledger.reach/100)}</b></div><div>${T('Children ill')}<br><b class="${prev.ledger.victims?'bad':''}">${num(prev.ledger.victims)}</b></div><div>${T('Absorption')}<br><b>${pct(prev.ledger.absorption)}</b></div><div>${T('Allocation this semester')}<br><b class="${w.allocFrac<1?'bad':''}">${pct(w.allocFrac)}</b> ${T('of full coverage')}</div><div>${T('Kitchens suspended this semester')}<br><b>${sus.length}</b></div></div></div>`:'';
   const LATER={safety:T('Safety and controls: inspectors, training, certification, audits, payment controls.'),delivery:T('Delivery timing: cooking batches, who eats last, extra vehicles.'),menu:T('Weekly menu: the meal on each school day.')};
-  const later=['delivery','menu','safety'].filter(g=>!open(g)).map(g=>[lockText(g,y),LATER[g]]);
+  const later=['delivery','menu','safety'].filter(g=>!open(g)).map(g=>[lockText(g),LATER[g]]);
   const details=['safety','delivery','menu'].filter(g=>open(g)&&!fresh.includes(g)).map(g=>`<h3>${UNLOCK[g][0]}</h3>${UNLOCK[g][2]}`).join('');
   return`<div class="fade">`+card(`<h2>${T('{p}: plan',{p:periodLabel(y)})}</h2><p class="lead">${y===1?(open('activation')?T('Two decisions before the first semester runs: how many kitchens open, and how the money is split. Everything else starts on the settings you chose.'):T('One decision before the first semester runs: how the money is split. Everything else runs on the settings shown.')):T('Everything carries over from last semester. Make this semester\'s two decisions, then adjust anything else if you want to.')}</p>${recap}
 <h3><span class="num">1</span>${T('How many kitchens open')} ${info('ramp')}</h3><div class="ctl"><span>${T('Share of planned kitchens open this semester')}</span>${open('activation')?seg(ACTIVATION_STEPS.filter(x=>x>=minAct).map(x=>[x,pct(x)]),p.activation,v=>`A.setDraft('activation',${v})`):`<b>${pct(p.activation)}</b>`}</div>${open('activation')?'':lockNote('activation')}
 ${mapsRow(rid=>regencyMap(rid,{ks:previewKs(rid,y,p.activation)}),true)}
 <h3><span class="num">2</span>${T('Budget split for this semester')} ${info('absorption')}</h3><p class="mute hint">${T('Allocation this semester: {a}. Change the plan below and the needs update when you release a slider.',{a:fmtRp(allocationFor(y))})}</p><div id="budgetpanel">${budgetPanel('draft',y)}</div>`)
-+fresh.map(g=>card(`<p class="eyebrow unlocked">🔓 ${T('New this semester')}</p><h2>${UNLOCK[g][0]}</h2><p class="lead">${UNLOCK[g][1]}</p>${unlockedEarly(g)?`<div class="note">${T('Unlocked early: there was an incident or a suspension last semester, so you can respond now.')}</div>`:''}${UNLOCK[g][2]}`,'unlockcard')).join('')
++fresh.map(g=>card(`<p class="eyebrow unlocked">🔓 ${T('New this semester')}</p><h2>${UNLOCK[g][0]}</h2><p class="lead">${UNLOCK[g][1]}</p>${UNLOCK[g][2]}`,'unlockcard')).join('')
 +card(`<details class="adjust"><summary><b>${T('Adjust details')}</b> <span class="mute">${T('optional · the weekly menu repeats unless you change it')}</span></summary><div class="menuline">${menuLine}</div>${details}</details>
 ${later.length?`<div class="locks">${later.map(([n,t])=>`<div class="lockrow">${lockIcon()}<span><b>${n}</b> · ${t}</span></div>`).join('')}</div>`:''}`)+`</div>`+navRow('▶ '+fullName(YEAR_PHASE0+y),true,'A.commitPlan()');
 }
@@ -2985,9 +2978,6 @@ const I18N={
 "Impossible to tell":{id:"Tidak bisa ditentukan"},
 "Using default — unlocks in Semester {n}":{id:"Memakai nilai bawaan — terbuka di Semester {n}"},
 "unlocks in Semester {n}":{id:"terbuka di Semester {n}"},
-"Using default — unlocks in Semester {n}, or the semester after an incident or a suspension":{id:"Memakai nilai bawaan — terbuka di Semester {n}, atau di semester setelah ada insiden atau penghentian dapur"},
-"unlocks in Semester {n}, or the semester after an incident or a suspension":{id:"terbuka di Semester {n}, atau di semester setelah ada insiden atau penghentian dapur"},
-"Unlocked early: there was an incident or a suspension last semester, so you can respond now.":{id:"Dibuka lebih awal: semester lalu ada insiden atau penghentian dapur, jadi Anda bisa menanggapinya sekarang."},
 "Until then they run on sensible defaults.":{id:"Sampai saat itu, semuanya berjalan dengan nilai bawaan yang wajar."},
 "Delivery timing, the weekly menu, and safety and controls (including controls against leakage) are set in each semester's plan, from Semester 1.":{id:"Waktu pengantaran, menu mingguan, serta keamanan dan kendali (termasuk kendali terhadap kebocoran) diatur di rencana tiap semester, mulai Semester 1."},
 "Weekly menu: the meal on each school day.":{id:"Menu mingguan: makanan untuk tiap hari sekolah."},
