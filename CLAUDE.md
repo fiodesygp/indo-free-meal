@@ -63,7 +63,8 @@ The Ch3 food-cost ceiling is a modelling decision, not a sourced rule: the sourc
 - `npm run dev` serves the project root at http://localhost:3000/ with live reload on *.html, *.css, *.js and *.md. `npm run dev:panel` does the same and opens /?dev=1.
 - No npm: `python3 -m http.server 8000`, then open http://localhost:8000.
 - `npm test` runs the model-invariance test (`tests/invariance.mjs`) in headless Chrome (Node 22+; set `CHROME` if the binary is elsewhere).
-- Deployment stays a plain static index.html on Vercel: do not add a build or start script, Vite or a framework. The `test` script is for development only.
+- `npm run traps` (`tests/traps.mjs`) plays every Ch5 trap scenario on N salted seeds (`--n`, default 100, at least 50) with common random numbers (the salt replaces the decision vector in the RNG seeds, so a trap and its control share their random streams; `--no-crn` salts each scenario's own seeds instead) and reports means, pattern firing rates, and each control's win rate over its trap (`cheapPatchFixed` vs `cheapPatch`, `variedMenu` vs `dryPack`). A single autoplay is one draw; judge a trap by this report. The salt is dev-only: it lives in the script, never in index.html. Report only; `npm test` is separate.
+- Deployment stays a plain static index.html on Vercel: do not add a build or start script, Vite or a framework. The `test` and `traps` scripts are for development only.
 
 ## Rules
 - Make surgical edits. Never rewrite the whole file.

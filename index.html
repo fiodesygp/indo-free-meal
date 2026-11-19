@@ -4085,7 +4085,8 @@ const BASE_DEC={values:['delivered','exposure','cost'],posture:'balanced',region
 const SCENARIOS={
   certTrap:{label:'Certification trap',dec:{posture:'aggressive',siting:{JT:{target:3000,tenure:'build',fleet:2},KB:{target:2500,tenure:'build',fleet:1}},menu:[{m:'M2',a:'cutFruit'},{m:'M2',a:'none'},{m:'M5',a:'none'},{m:'M5',a:'none'},{m:'M2',a:'none'}]},plan:y=>({slhs:'all',inspectors:{JT:0,KB:0}}),choose:{incident:'suspend',sweep:'grace'}},
   cheapPatch:{label:'Cheap patch',dec:{siting:{JT:{target:3000,tenure:'build',fleet:2},KB:{target:2500,tenure:'build',fleet:2}},menu:[{m:'M2',a:'none'},{m:'M3',a:'none'},{m:'M3',a:'none'},{m:'M3',a:'none'},{m:'M2',a:'none'}]},choose:{incident:'suspend',sweep:'comply'}},
-  cheapPatchFixed:{label:'Cheap patch, control (fixes policy)',dec:{siting:{JT:{target:3000,tenure:'build',fleet:2},KB:{target:2500,tenure:'build',fleet:2}},menu:[{m:'M2',a:'none'},{m:'M3',a:'none'},{m:'M3',a:'none'},{m:'M3',a:'none'},{m:'M2',a:'none'}]},choose:{incident:'policy',sweep:'comply'}},
+  // Control: answers incidents with the corrective plan (keep the kitchen open, a batch per run, retraining), so no redirect cascade.
+  cheapPatchFixed:{label:'Cheap patch, control (corrective plan)',dec:{siting:{JT:{target:3000,tenure:'build',fleet:2},KB:{target:2500,tenure:'build',fleet:2}},menu:[{m:'M2',a:'none'},{m:'M3',a:'none'},{m:'M3',a:'none'},{m:'M3',a:'none'},{m:'M2',a:'none'}]},choose:{incident:'corrective',sweep:'comply'}},
   dryPack:{label:'Dominant menu: dry pack everywhere',dec:{menu:[0,1,2,3,4].map(()=>({m:'M7',a:'none'}))},choose:{}},
   // Control: a varied week that stays inside its safe windows (Friday M3, not the fragile M5), so it tests uptake, not safety.
   variedMenu:{label:'Dominant menu, control: varied',dec:{menu:[{m:'M1',a:'wholeFruit'},{m:'M4',a:'none'},{m:'M3',a:'none'},{m:'M1',a:'none'},{m:'M3',a:'none'}]},choose:{}},
