@@ -779,7 +779,7 @@ const PARAMS = {
   COST_STAGGER_PORTION:{v:300,unit:'Rp/portion',src:'estimate',note:'Extra cook shifts for per-run batches.'},
   COST_RAILS_REGION:{v:600e6,unit:'Rp/yr/region',src:'estimate',note:'Digital payment rails.'},
   COST_RECEIPTS_REGION:{v:400e6,unit:'Rp/yr/region',src:'estimate',note:'Receipt verification at the kitchen.'},
-  COST_CORRECTIVE_KITCHEN:{v:150e6,unit:'Rp/yr/kitchen',src:'estimate',note:'Corrective plan: separate batches plus retraining.'},
+  COST_CORRECTIVE_KITCHEN:{get v(){return PARAMS.COST_TRAINING_KITCHEN.v;},unit:'Rp/yr/kitchen',src:'estimate',note:'Corrective plan: handler retraining only, priced as COST_TRAINING_KITCHEN. Its one batch per run is charged per portion (COST_STAGGER_PORTION), the single batch-per-run price everywhere. Was Rp150M for batches plus retraining, which double-counted: the batch cost alone is Rp300 × 2,500 × 200 = Rp150M a year at a standard kitchen.'},
   // ---- Safety model
   HAZARD_BASE:{v:0.015,unit:'per kitchen-year',src:'estimate',note:'Irreducible incident base rate. Was 0.03: at that rate about a quarter of untouched Beginner paths had an S1 incident with every portion safe.'},
   HAZARD_K:{v:1.3,unit:'scale',src:'estimate',note:'Converts holding risk into incident hazard.'},
@@ -1181,21 +1181,27 @@ function initWorld(){
    player what each envelope has to cover. Before launch it estimates from the set-up (no world yet). */
 function budgetNeeds(plan,p){
   p=p||1;const regs=G.dec.regions,PD=P('PERIOD_DAYS'),w=G.world;
+  /* Once the world exists, Meals is priced on the network this semester will actually run (semesterNetwork: openings,
+     suspensions, redirected loads, corrective kitchens) with the engine's own pricing (mealsAtFullService), so it
+     equals the engine's planned Meals cost. */
+  const net=w?semesterNetwork(p,plan):null,open=net?net.kitchens.filter(s=>s.active&&!s.suspended):null;
   const perP=sum(plan.menu.map(d=>mealProps(d.m,d.a).cost))/5+P('OPS_PER_PORTION')+P('INCENTIVE_PER_PORTION');
   let meals=0,ov=0;
   for(const rid of regs){
     const rp=regionPlan(rid),cap=(w?w.viable[rid]:rp.viable)?1:P('NONVIABLE_ACTIVATION_CAP');
-    const nOpen=w?w.kitchens.filter(k=>k.rid===rid&&!k.suspended&&(k.active||k.idx<Math.ceil(rp.n*Math.min(plan.activation,cap)))).length:Math.ceil(rp.n*Math.min(plan.activation,cap));
-    meals+=nOpen*rp.load*PD*(perP+(plan.batch[rid]==='staggered'?P('COST_STAGGER_PORTION'):0));
+    const nOpen=w?open.filter(s=>s.k.rid===rid).length:Math.ceil(rp.n*Math.min(plan.activation,cap));
+    if(!w)meals+=nOpen*rp.load*PD*(perP+(plan.batch[rid]==='staggered'?P('COST_STAGGER_PORTION'):0));
+    if(w)ov+=open.filter(s=>s.k.rid===rid&&s.k.corrective).length*P('COST_CORRECTIVE_KITCHEN')*PF();
     ov+=(plan.inspectors[rid]*P('COST_INSPECTOR')+(plan.training[rid]?nOpen*P('COST_TRAINING_KITCHEN'):0)+plan.extraFleet[rid]*nOpen*P('COST_EXTRA_VEHICLE')+(plan.audit?P('COST_AUDIT_REGION'):0)+(plan.rails?P('COST_RAILS_REGION'):0)+(plan.receipts?P('COST_RECEIPTS_REGION'):0))*PF();
     const lvl=SLHS_LEVELS[plan.slhs];ov+=nOpen*(1-Math.pow(1-lvl.p,PF()))*P('COST_SLHS_KITCHEN')*(plan.slhs==='all'?P('SLHS_RUSH_MULT'):1);
   }
+  if(w)meals=mealsAtFullService(open.map(s=>Object.assign({},s.k,{load:s.load,redirectIn:s.redirectIn})),plan);
   return{meals,oversight:ov};
 }
 function allocationFor(p){const w=G.world;if(w)return w.allocFrac*w.Afull;return sum(G.dec.regions.map(r=>region(r).students))*P('PERIOD_DAYS')*P('PORTION_CEILING')*(1+P('HEADROOM_FRAC'));}
 /* Suggested split: oversight covers its needs, a small reserve, meals take the rest. */
-function defaultBudget(plan,A){
-  A=A||allocationFor();const n=budgetNeeds(plan);const r2=x=>Math.round(x*100)/100;
+function defaultBudget(plan,A,y){
+  A=A||allocationFor();const n=budgetNeeds(plan,y);const r2=x=>Math.round(x*100)/100;
   const ov=Math.min(0.3,Math.ceil(n.oversight/A*100)/100),res=P('RESERVE_DEFAULT');
   return{meals:r2(1-ov-res),oversight:ov,reserve:res};
 }
@@ -1213,17 +1219,42 @@ function defaultPlan(y){
 }
 
 /* ---- Year cycle: begin -> pre-events -> simulate -> post-events -> finalize ---- */
-function beginYear(y,plan){
-  const w=G.world;
-  const ctx={y,plan,stage:'pre',queue:[],events:[],detour:{},lostDays:{},shelfDays:{},costMult:{},leakAdd:0,menuSwap:null,priceAbsorb:null,proteinTrim:null,activeCount:{},unservedRedirect:0,newlyCert:0,certCost:0,notes:[],revealed:false,capture:false};
-  ctx.preRng=rngFrom(fnv(decisionVector('pre'+y)));
-  // 1. Activation, limited by partner viability
+/* The network a semester runs on, without touching the world: who is open (activation, capped by partner viability),
+   who is suspended this semester, and each open kitchen's load after the suspended kitchens' children are redirected
+   to their two nearest open kitchens (R4). beginYear() applies it; budgetNeeds() prices it, so the Meals forecast and
+   the engine's planned Meals cost come from one implementation. moves lists each redirect in order (to:null = no open
+   kitchen nearby, the children go unfed). */
+function semesterNetwork(y,plan){
+  const w=G.world,out={kitchens:[],moves:[]};
   for(const rid of G.dec.regions){
     const ks=w.kitchens.filter(k=>k.rid===rid);
     const capShare=w.viable[rid]?1:P('NONVIABLE_ACTIVATION_CAP');
     const target=Math.ceil(ks.length*Math.min(plan.activation,capShare));
-    ks.forEach((k,i)=>{if(i<target&&!k.active){k.active=true;k.activatedYear=y;}});
+    const st=ks.map((k,i)=>({k,active:k.active||i<target,suspended:k.suspendedYear===y,load:k.baseLoad,redirectIn:0}));
+    const act=st.filter(s=>s.active&&!s.suspended);
+    for(const s of st.filter(s=>s.active&&s.suspended)){
+      const nb=act.slice().sort((a,b)=>Math.hypot(a.k.x-s.k.x,a.k.y-s.k.y)-Math.hypot(b.k.x-s.k.x,b.k.y-s.k.y)||a.k.idx-b.k.idx).slice(0,2);
+      if(!nb.length){out.moves.push({from:s.k,to:null});continue;}
+      const share=Math.round(s.k.baseLoad/nb.length);
+      for(const n of nb){out.moves.push({from:s.k,to:n.k,share,before:n.load});n.load+=share;n.redirectIn+=share;}
+    }
+    out.kitchens.push(...st);
   }
+  return out;
+}
+/* Meals cost of a semester at full service (every planned school day), for the given open kitchens: food, operations,
+   incentive, and the per-portion batch cost wherever a kitchen cooks one batch per run (a province on a batch per run,
+   or a kitchen on a corrective plan). */
+function mealsAtFullService(ks,plan){let m=0;
+  for(const k of ks)for(const d of WEEK()){const o=kitchenOps(k,plan,null,d);m+=0.2*sum(o.runs.map(r=>r.portions*(mealProps(r.menu,r.addon).cost+P('OPS_PER_PORTION')+P('INCENTIVE_PER_PORTION')+(o.stag?P('COST_STAGGER_PORTION'):0))))*P('PERIOD_DAYS');}
+  return m;}
+function beginYear(y,plan){
+  const w=G.world;
+  const ctx={y,plan,stage:'pre',queue:[],events:[],detour:{},lostDays:{},shelfDays:{},costMult:{},leakAdd:0,menuSwap:null,priceAbsorb:null,proteinTrim:null,activeCount:{},unservedRedirect:0,newlyCert:0,certCost:0,notes:[],revealed:false,capture:false};
+  ctx.preRng=rngFrom(fnv(decisionVector('pre'+y)));
+  const net=semesterNetwork(y,plan);
+  // 1. Activation, limited by partner viability
+  for(const s of net.kitchens)if(s.active&&!s.k.active){s.k.active=true;s.k.activatedYear=y;}
   // 2. Suspensions decided last year take effect now
   w.kitchens.forEach(k=>{k.suspended=k.suspendedYear===y;k.load=k.baseLoad;k.redirectIn=0;k.chainIds=[];});
   // 3. Certification
@@ -1233,22 +1264,14 @@ function beginYear(y,plan){
     if(ctx.preRng()<(w.forceCert?1:pc)){k.certified=true;ctx.newlyCert++;ctx.certCost+=P('COST_SLHS_KITCHEN')*(rush?P('SLHS_RUSH_MULT'):1);}
   }
   w.forceCert=false;
-  // 4. Redirect: suspended kitchens' children go to the nearest open kitchens (R4)
-  for(const rid of G.dec.regions){
-    const ks=w.kitchens.filter(k=>k.rid===rid);
-    const act=ks.filter(k=>k.active&&!k.suspended);
-    ctx.activeCount[rid]=act.length;
-    for(const s of ks.filter(k=>k.active&&k.suspended)){
-      const chain=w.chains.find(c=>c.id===s.pendingChain);
-      const nb=act.slice().sort((a,b)=>Math.hypot(a.x-s.x,a.y-s.y)-Math.hypot(b.x-s.x,b.y-s.y)||a.idx-b.idx).slice(0,2);
-      if(!nb.length){ctx.unservedRedirect+=s.baseLoad;if(chain)chain.lost=(chain.lost||0)+s.baseLoad;continue;}
-      const share=Math.round(s.baseLoad/nb.length);
-      for(const n of nb){
-        const before=n.load;n.load+=share;n.redirectIn+=share;
-        if(chain&&!n.chainIds.includes(chain.id))n.chainIds.push(chain.id);
-        if(chain)chain.redirects.push({to:n.id,added:share,loadBefore:before,cap:n.cap});
-      }
-    }
+  // 4. Redirect: suspended kitchens' children go to the nearest open kitchens (R4), as semesterNetwork() worked out
+  for(const rid of G.dec.regions)ctx.activeCount[rid]=w.kitchens.filter(k=>k.rid===rid&&k.active&&!k.suspended).length;
+  for(const x of net.moves){
+    const s=x.from,chain=w.chains.find(c=>c.id===s.pendingChain);
+    if(!x.to){ctx.unservedRedirect+=s.baseLoad;if(chain)chain.lost=(chain.lost||0)+s.baseLoad;continue;}
+    const n=x.to;n.load+=x.share;n.redirectIn+=x.share;
+    if(chain&&!n.chainIds.includes(chain.id))n.chainIds.push(chain.id);
+    if(chain)chain.redirects.push({to:n.id,added:x.share,loadBefore:x.before,cap:n.cap});
   }
   for(const c of w.chains.filter(c=>c.year===y))for(const r of c.redirects){
     const kn=w.kitchens.find(k=>k.id===r.to);
@@ -1268,12 +1291,11 @@ function beginYear(y,plan){
   ov=ctx.certCost+(ov-ctx.certCost)*PF();  // yearly running costs, charged per semester; certificates are one-off
   ctx.A=w.allocFrac*w.Afull;ctx.allocFrac=w.allocFrac;
   // Budget envelopes: the player splits the allocation into meals, oversight and a reserve (Budget page; revisable each semester)
-  const bud=plan.budget||defaultBudget(plan,ctx.A);
+  const bud=plan.budget||defaultBudget(plan,ctx.A,y);
   ctx.budget={meals:ctx.A*bud.meals,oversight:ctx.A*bud.oversight,reserve:ctx.A*bud.reserve,shares:clone(bud)};
   ctx.ovPlanned=ov;ctx.ovScale=ov>0?Math.min(1,ctx.budget.oversight/ov):1;  // underfunded oversight does proportionally less
   ov=Math.min(ov,ctx.budget.oversight);ctx.oversight=ov;
-  let planned=0;
-  for(const k of w.kitchens.filter(k=>k.active&&!k.suspended))for(const d of WEEK()){const o=kitchenOps(k,plan,null,d);planned+=0.2*sum(o.runs.map(r=>r.portions*(mealProps(r.menu,r.addon).cost+P('OPS_PER_PORTION')+P('INCENTIVE_PER_PORTION')+(o.stag?P('COST_STAGGER_PORTION'):0))))*P('PERIOD_DAYS');}
+  const planned=mealsAtFullService(w.kitchens.filter(k=>k.active&&!k.suspended),plan);
   ctx.fundFrac=planned>0?clamp(ctx.budget.meals/planned,0,1):1;  // the meals envelope funds service days
   ctx.plannedCost=planned;ctx.plannedServed=sum(w.kitchens.filter(k=>k.active&&!k.suspended).map(k=>k.load))*ctx.fundFrac;
   ctx.queue=drawPreEvents(ctx);
@@ -2342,7 +2364,7 @@ VIEWS.year=()=>{
 function planView(y){
   if(G.chapter===4)return planViewCh4(y);
   const p=G.draft,w=G.world,prev=G.results[y-2],regs=G.dec.regions;
-  if(!p.budget)p.budget=defaultBudget(p,allocationFor(y));
+  if(!p.budget)p.budget=defaultBudget(p,allocationFor(y),y);
   const minAct=y>1?G.plans[y-2].activation:0;
   if(G.ui.activeRun>4)G.ui.activeRun=0;
   const sus=w.kitchens.filter(k=>k.suspendedYear===y).map(k=>k.id);
@@ -2378,7 +2400,7 @@ ${later.length?`<div class="locks">${later.map(([n,t])=>`<div class="lockrow">${
 }
 /* Chapter 4's semester plan has no decisions: every planned kitchen that finds a partner opens, and the budget is
    split automatically (defaultBudget). Ramp speed and the split are Chapter 5 decisions. */
-function planViewCh4(y){const p=G.draft,w=G.world,A0=allocationFor(y);if(!p.budget)p.budget=defaultBudget(p,A0);const b=p.budget;
+function planViewCh4(y){const p=G.draft,w=G.world,A0=allocationFor(y);if(!p.budget)p.budget=defaultBudget(p,A0,y);const b=p.budget;
   const kv=G.dec.regions.map(rid=>{const ks=w.kitchens.filter(k=>k.rid===rid),open=Math.ceil(ks.length*Math.min(p.activation,w.viable[rid]?1:P('NONVIABLE_ACTIVATION_CAP')));
     return`<div>${T('Kitchens opening')} ${info('breakeven')}<br><b>${open}</b> ${T('of {n} planned',{n:ks.length})}</div>`;}).join('');
   const notes=G.dec.regions.filter(rid=>!w.viable[rid]).map(()=>`<div class="note">${T('Partners here cannot pay back the build within the period BGN expects, so only {p} of planned kitchens find one.',{p:pct(P('NONVIABLE_ACTIVATION_CAP'))})}</div>`).join('');
@@ -2589,10 +2611,10 @@ const EVENT_TEXT={
   incident:ev=>({title:T(ev.list.length>1?'Food-poisoning incidents':'Food-poisoning incident'),body:`<table><tr><th>${T('Kitchen')}</th><th>${T('Children ill')}</th><th>${T('Day')}</th><th>${T('Run')}</th><th>${T('Cook to eat')}</th><th>${T('Menu')}</th><th>${T('Hygiene cert.')}</th></tr>${ev.list.map(i=>`<tr><td>${i.kid}<br><span class="mute">${placeOf(i.rid)}</span>${i.chainIds.length?` <span class="tag r">${T('took redirected children')} (${i.chainIds.join(', ')})</span>`:''}</td><td>${num(i.victims)}${i.major?` <b class="bad">${T('major')}</b>`:''}</td><td>${dayName(i.dow||0)}</td><td>${T('{a} of {b}',{a:i.run,b:i.nRuns})}</td><td>${i.hold.toFixed?Math.round(i.hold):i.hold} min</td><td>${menuName(i.menu)}</td><td>${T(i.certified?'certified':'none')}</td></tr>`).join('')}</table>${ev.list.map(i=>incExplain(i)).join('')}${ev.list.some(i=>i.wasCorrective)?`<div class="note">${T('One or more of these kitchens was already on a corrective plan. They will be suspended whatever you choose.')}</div>`:''}`,
     /* Each response states its own consequences, with the engine's numbers: suspension lasts one semester and its
        children are redirected (applyPostChoice, suspendKitchen); the corrective plan is a batch per run (so the per-portion
-       batch cost applies too) plus COST_CORRECTIVE_KITCHEN a year, ×CORRECTIVE_MULT on the hazard, and a repeat incident
+       batch cost applies, as everywhere) plus COST_CORRECTIVE_KITCHEN (retraining) a year, ×CORRECTIVE_MULT on the hazard, and a repeat incident
        forces suspension; the policy fix sets the province to a batch per run in every later plan (defaultPlan). */
     opts:[['suspend',T('Suspend the kitchen(s) for next semester. Their children are moved to the nearest open kitchens.')],
-      ['corrective',T('Keep them open under a corrective plan: one batch per run and handler retraining. Costs {c} a year per kitchen, plus {p} a portion for the extra batches, and lowers incident risk (×{m}). Another incident at that kitchen forces suspension.',{c:fmtRp(P('COST_CORRECTIVE_KITCHEN')).replace(/ /g,'\u00a0'),p:rpFull(P('COST_STAGGER_PORTION')),m:dec(P('CORRECTIVE_MULT'),1)})],
+      ['corrective',T('Keep them open under a corrective plan: one batch per run and handler retraining. Costs {c} a year per kitchen for retraining, plus {p} a portion for the extra batches, and lowers incident risk (×{m}). Another incident at that kitchen forces suspension.',{c:fmtRp(P('COST_CORRECTIVE_KITCHEN')).replace(/ /g,'\u00a0'),p:rpFull(P('COST_STAGGER_PORTION')),m:dec(P('CORRECTIVE_MULT'),1)})],
       ['policy',T('Suspend them for next semester, and set every kitchen in the province to one batch per run in every later semester plan (+{p} a portion). Their children are moved to the nearest open kitchens.',{p:rpFull(P('COST_STAGGER_PORTION'))})]]}),
   sweep:ev=>({title:T('Enforcement sweep'),body:ev.uncert.length?T('After this semester\'s incidents, the regulator orders every kitchen without a {slhs} suspended. {n} of your open kitchens are uncertified: {list}.',{slhs:g('SLHS',T('hygiene certificate (SLHS)')),n:ev.uncert.length,list:ev.uncert.join(', ')}):T('After this semester\'s incidents, the regulator sweeps for kitchens without a {slhs}. All of your open kitchens hold one.',{slhs:g('SLHS',T('hygiene certificate (SLHS)'))}),
     opts:ev.uncert.length?[['comply',T('Comply: suspend them next semester')],['grace',T('Negotiate a grace period and rush-certify them')]]:[['ok',T('Noted')]]}),
@@ -3648,7 +3670,7 @@ const I18N={
 "None of the flagged patterns fired in this run.":{id:"Tidak satu pun pola yang ditandai muncul dalam permainan ini."},
 "You answered {n} incidents by suspending the kitchen, with no change to cook-to-serve policy in that province afterwards: {list}.":{id:"Anda menanggapi {n} insiden dengan menghentikan dapurnya, tanpa perubahan kebijakan masak-sampai-saji di provinsi itu sesudahnya: {list}."},
 "Suspend the kitchen(s) for next semester. Their children are moved to the nearest open kitchens.":{id:"Hentikan dapur tersebut selama semester depan. Anak-anaknya dialihkan ke dapur terdekat yang masih buka."},
-"Keep them open under a corrective plan: one batch per run and handler retraining. Costs {c} a year per kitchen, plus {p} a portion for the extra batches, and lowers incident risk (×{m}). Another incident at that kitchen forces suspension.":{id:"Biarkan tetap buka dengan rencana perbaikan: satu kali masak per putaran dan pelatihan ulang penjamah. Biayanya {c} per tahun per dapur, ditambah {p} per porsi untuk masak tambahan, dan menurunkan risiko insiden (×{m}). Jika terjadi insiden lagi di dapur itu, dapur wajib dihentikan."},
+"Keep them open under a corrective plan: one batch per run and handler retraining. Costs {c} a year per kitchen for retraining, plus {p} a portion for the extra batches, and lowers incident risk (×{m}). Another incident at that kitchen forces suspension.":{id:"Biarkan tetap buka dengan rencana perbaikan: satu kali masak per putaran dan pelatihan ulang penjamah. Biayanya {c} per tahun per dapur untuk pelatihan ulang, ditambah {p} per porsi untuk masak tambahan, dan menurunkan risiko insiden (×{m}). Jika terjadi insiden lagi di dapur itu, dapur wajib dihentikan."},
 "Suspend them for next semester, and set every kitchen in the province to one batch per run in every later semester plan (+{p} a portion). Their children are moved to the nearest open kitchens.":{id:"Hentikan selama semester depan, lalu atur semua dapur di provinsi itu menjadi satu kali masak per putaran di setiap rencana semester berikutnya (+{p} per porsi). Anak-anaknya dialihkan ke dapur terdekat yang masih buka."},
 "and {n} more":{id:"dan {n} lainnya"},
 "Safe, but not eaten":{id:"Aman, tetapi tidak dimakan"},

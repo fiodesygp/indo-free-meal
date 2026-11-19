@@ -9,6 +9,10 @@
 // 4. The same scenarios played through the semester plan page with the level's gating: each decision group opens
 //    in its level's fixed semester whatever the incidents, rendering never changes the plan, the engine never reads the level,
 //    and the plans handed to the engine and the results are identical at every level.
+// 6. Meals forecast: in every trap semester (at every level, through the plan page), the Meals cost the budget page
+//    forecasts (budgetNeeds) equals the engine's planned Meals cost at full service (ctx.plannedCost), and equals the
+//    Meals cost actually charged in every semester nothing disrupted (full funding, no lost or shelf-pack days, no price
+//    or menu events, no flooded kitchens, no reserve shortfall). Disruptions are charged on top of the plan by design.
 // 5. Reproducibility: every trap scenario gives the identical run cold (a fresh page per trap) and after two different
 //    warm-ups in one page (the traps on 50 salted seeds; Stage 1 and Stage 2 autoplay), so the same decisions always
 //    give the same run, however long the page has been running.
@@ -84,7 +88,7 @@ const IN_PAGE = async () => {
   //    the default budget split, as it does for every player, so the plan it hands the engine must be identical at
   //    every level; the engine calls must read the level zero times; and the results must be identical at every level.
   //    Each group must open in the fixed semester LV_UNLOCK gives, whatever incidents happened (no early unlock).
-  const ui = {}, opened = {}, plans = {};
+  const ui = {}, opened = {}, plans = {}, mealChecks = { planned: 0, calm: 0 };
   for (const lv of LEVELS) {
     trapLevel(); value = lv; ui[lv] = {}; opened[lv] = {}; plans[lv] = {};
     for (const [k, scn] of Object.entries(M.SCENARIOS)) {
@@ -99,10 +103,19 @@ const IN_PAGE = async () => {
         open.push(unlockAt('safety') <= y ? 1 : 0);
         if (y > 1 && unlockAt('safety') === y && !document.querySelector('.unlockcard')) fail.push(`scenario "${k}" at "${lv}": safety opened in Semester ${y} without its card`);
         for (const g of ['activation', 'menu', 'delivery', 'safety']) if (unlockAt(g) !== LV_UNLOCK[lv][g]) fail.push(`scenario "${k}" at "${lv}": ${g} opens in Semester ${unlockAt(g)}, not the fixed Semester ${LV_UNLOCK[lv][g]}`);
+        const forecastMeals = budgetNeeds(G.draft, y).meals;
         reads = 0;
         G.plans[y - 1] = clone(G.draft); G.draft = null; beginYear(y, G.plans[y - 1]);
+        // 6. The Meals forecast equals what the engine plans to charge, and what it charges when nothing disrupts service.
+        const near = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b));
+        if (!near(forecastMeals, G.ctx.plannedCost)) fail.push(`scenario "${k}" at "${lv}", Semester ${y}: Meals forecast ${Math.round(forecastMeals)} ≠ planned ${Math.round(G.ctx.plannedCost)}`);
+        mealChecks.planned++;
         while (G.ctx.stage !== 'results') { const ev = G.ctx.queue[0]; const opts = EVENT_TEXT[ev.type](ev).opts.map(o => o[0]); const want = (scn.choose || {})[ev.type]; resolveEvent(opts.includes(want) ? want : opts[0]); }
         if (reads) fail.push(`scenario "${k}" at "${lv}": the engine read the level ${reads} time(s) in Semester ${y}`);
+        { const c = G.ctx, none = o => !Object.values(o || {}).some(v => v);
+          const calm = c.fundFrac >= 1 && none(c.lostDays) && none(c.shelfDays) && none(c.costMult) && !c.priceAbsorb && !c.menuSwap && !(c.reserveShort > 0) && !(c.weather || []).some(e => e.kids.length);
+          if (calm) { mealChecks.calm++; const charged = c.foodSpend + c.opsSpend + c.eventCost;
+            if (!near(forecastMeals, charged)) fail.push(`scenario "${k}" at "${lv}", Semester ${y} (no disruption): Meals forecast ${Math.round(forecastMeals)} ≠ charged ${Math.round(charged)}`); } }
       }
       opened[lv][k] = open.join('');
       ui[lv][k] = JSON.stringify({ ledger: G.results.map(c => c.ledger), seeds: G.results.map(c => c.seed), events: G.eventLog, incidents: G.results.map(c => c.incidents) });
@@ -110,7 +123,7 @@ const IN_PAGE = async () => {
   }
   for (const k of Object.keys(M.SCENARIOS)) for (const lv of LEVELS.slice(1))
     if (ui[lv][k] !== ui.beginner[k]) fail.push(`scenario "${k}" through the plan page: results differ between beginner and ${lv}`);
-  return { fail, scenarios: Object.keys(M.SCENARIOS).length, forecasts: JSON.parse(forecasts.beginner).length, opened: opened.beginner };
+  return { fail, scenarios: Object.keys(M.SCENARIOS).length, forecasts: JSON.parse(forecasts.beginner).length, opened: opened.beginner, mealChecks };
 };
 
 // 5. Fingerprint of one trap's run, and the warm-ups. Run inside the page.
@@ -152,7 +165,7 @@ try {
   await load();
   const r = await send('Runtime.evaluate', { expression: `(${IN_PAGE})()`, awaitPromise: true, returnByValue: true, timeout: 240000 });
   if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
-  const { fail, scenarios, forecasts, opened } = r.result.result.value;
+  const { fail, scenarios, forecasts, opened, mealChecks } = r.result.result.value;
   // 5. Reproducibility across warm-ups.
   const keys = await evalPage('Object.keys(window.MBG.SCENARIOS)'), cold = {};
   for (const k of keys) { await load(); cold[k] = await evalPage(`${FP}(${JSON.stringify(k)})`); }
@@ -163,6 +176,6 @@ try {
   }
   fail.push(...errors.map(e => 'page error: ' + e));
   if (fail.length) { console.error('FAIL\n- ' + fail.join('\n- ')); }
-  else { console.log(`PASS: ${scenarios} scenarios identical at all three levels with no level reads; ${forecasts} forecasts per level identical, no level reads, no seed, no Math.random, decisions unchanged; played through the plan page at all three levels with the level gating on: identical results, no engine level reads, unlocks fixed by level whatever the incidents (beginner safety open by semester: ${Object.entries(opened).map(([k, v]) => k + ' ' + v).join(', ')}); every trap gives the identical run cold and after ${Object.keys(WARM).length} warm-ups.`); code = 0; }
+  else { console.log(`PASS: ${scenarios} scenarios identical at all three levels with no level reads; ${forecasts} forecasts per level identical, no level reads, no seed, no Math.random, decisions unchanged; played through the plan page at all three levels with the level gating on: identical results, no engine level reads, unlocks fixed by level whatever the incidents (beginner safety open by semester: ${Object.entries(opened).map(([k, v]) => k + ' ' + v).join(', ')}); every trap gives the identical run cold and after ${Object.keys(WARM).length} warm-ups; the Meals forecast equals the engine's planned Meals cost in all ${mealChecks.planned} trap semesters, and the charged cost in the ${mealChecks.calm} with no disruption.`); code = 0; }
 } catch (e) { console.error('FAIL: ' + e.message); }
 finally { try { ws && ws.close(); } catch {} chrome.kill(); await sleep(300); try { rmSync(prof, { recursive: true, force: true }); } catch {} process.exit(code); }
