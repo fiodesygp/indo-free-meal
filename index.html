@@ -780,7 +780,7 @@ const PARAMS = {
   COST_RECEIPTS_REGION:{v:400e6,unit:'Rp/yr/region',src:'estimate',note:'Receipt verification at the kitchen.'},
   COST_CORRECTIVE_KITCHEN:{v:150e6,unit:'Rp/yr/kitchen',src:'estimate',note:'Corrective plan: separate batches plus retraining.'},
   // ---- Safety model
-  HAZARD_BASE:{v:0.03,unit:'per kitchen-year',src:'estimate',note:'Irreducible incident base rate.'},
+  HAZARD_BASE:{v:0.015,unit:'per kitchen-year',src:'estimate',note:'Irreducible incident base rate. Was 0.03: at that rate about a quarter of untouched Beginner paths had an S1 incident with every portion safe.'},
   HAZARD_K:{v:1.3,unit:'scale',src:'estimate',note:'Converts holding risk into incident hazard.'},
   NC_FLOOR_WEIGHT:{v:0.4,unit:'weight',src:'estimate',note:'Holding risk bites even at perfect process compliance.'},
   NC_NEW:{v:0.35,unit:'share',src:'estimate',note:"Process non-compliance in a kitchen's first operating year. Anchor: 18 of 19 problem kitchens had operated under a month (sourced)."},
@@ -1589,7 +1589,7 @@ const INFO={
     lab:'0.85 knee and the stress curve: estimates.'},
   hazard:{t:'Incidents: a hazard rate, not a dice roll',
     th:'Reliability hazard models: failures arrive as a rate driven by stressors, so the yearly chance of at least one failure is 1 − e^(−hazard).',
-    calc:'hazard = 0.03 + 1.3 × share at risk × (0.4 + non-compliance) × crowding stress (a yearly rate)\n×1.5 if a rule is broken, ×0.6 under a corrective plan\nP(incident this semester) = 1 − e^(−hazard × ½)',
+    calc:'hazard = 0.015 + 1.3 × share at risk × (0.4 + non-compliance) × crowding stress (a yearly rate)\n×1.5 if a rule is broken, ×0.6 under a corrective plan\nP(incident this semester) = 1 − e^(−hazard × ½)',
     lab:'All coefficients: estimates. The seed comes from your decisions, so the same choices give the same year.'},
   compliance:{t:'Process compliance: learning curves and monitoring',
     th:'Learning curves (new operations make more errors) and monitoring capacity in principal-agent settings: inspection reduces shirking only in proportion to how much of the network it can actually reach.',
@@ -2531,7 +2531,7 @@ function incDriver(inc,c){const x=incCause(inc,c);if(!x)return'';
   const why=[x.holdRule&&T('a run broke the 4-hour rule'),x.legRule&&T('a delivery leg broke the 30-minute rule')].filter(Boolean);
   const mult=(why.length?' '+T('×{m}: {why}.',{m:dec(P('BREACH_MULT'),1),why:why.join(' '+T('and')+' ')}):'')+(x.corrective?' '+T('×{m}: kept open under a corrective plan.',{m:dec(P('CORRECTIVE_MULT'),1)}):'');
   const base=x.risk>0?T('Cause: food held past its safe window ({p} of this kitchen\'s portions over the week were at risk), made worse by process non-compliance ({nc}), on top of the baseline incident rate.',{p:pct(x.risk),nc:pct(x.nc)})+(x.cs>1?' '+T('Crowding multiplied the holding risk by {c}.',{c:dec(x.cs,1)}):'')
-    :T('Cause: the baseline incident rate, {b} a kitchen-year, which applies even when holding is safe.',{b:dec(P('HAZARD_BASE'),2)});
+    :T('Cause: the baseline incident rate, {b} a kitchen-year, which applies even when holding is safe.',{b:dec(P('HAZARD_BASE'),3)});
   return base+mult;}
 const incExplain=(inc,c)=>`<div class="incwhy"><b>${inc.kid}</b> · ${placeOf(inc.rid)}: <b>${incWindow(inc,c)}.</b> ${incDriver(inc,c)}</div>`;
 function fireIncident(inc){const a=G.anim;a.ill+=inc.victims;a.nInc++;markIncident(inc,true);
@@ -4033,7 +4033,7 @@ id:{
     lab:'Titik belok 0,85 dan kurva tekanan: perkiraan.'},
   hazard:{t:'Insiden: laju bahaya, bukan lempar dadu',
     th:'Model bahaya keandalan: kegagalan datang sebagai laju yang digerakkan pemicu tekanan, sehingga peluang tahunan setidaknya satu kegagalan adalah 1 − e^(−bahaya).',
-    calc:'bahaya = 0,03 + 1,3 × bagian berisiko × (0,4 + ketidakpatuhan) × tekanan kepadatan (laju per tahun)\n×1,5 jika aturan dilanggar, ×0,6 dalam rencana perbaikan\nP(insiden semester ini) = 1 − e^(−bahaya × ½)',
+    calc:'bahaya = 0,015 + 1,3 × bagian berisiko × (0,4 + ketidakpatuhan) × tekanan kepadatan (laju per tahun)\n×1,5 jika aturan dilanggar, ×0,6 dalam rencana perbaikan\nP(insiden semester ini) = 1 − e^(−bahaya × ½)',
     lab:'Semua koefisien: perkiraan. Seed berasal dari keputusan Anda, jadi pilihan yang sama memberi tahun yang sama.'},
   compliance:{t:'Kepatuhan prosedur: kurva belajar dan pengawasan',
     th:'Kurva belajar (operasi baru lebih banyak salah) dan kapasitas pengawasan dalam hubungan prinsipal-agen: inspeksi mengurangi kelalaian hanya sebanding dengan seberapa banyak jaringan yang benar-benar dapat dijangkaunya.',
