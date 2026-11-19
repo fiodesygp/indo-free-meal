@@ -2699,15 +2699,20 @@ function unfixedSuspensions(){const R=G.results||[],out=[];
     const popup=R.some(c2=>c2.y>c.y&&(c2.events||[]).some(e=>e.type==='incident'&&e.choice==='policy'&&e.list.some(j=>j.rid===i.rid)));
     if(!batch&&!menu&&!popup)out.push(Object.assign({},i,{y:c.y}));}
   return out;}
+/* Debrief pattern order: by when the decision a pattern judges is made. Spending pace first (posture at build, Semester 1's
+   activation), then the weekly menu (set at build, before any semester runs), then certification (each semester plan's
+   SLHS choice), then incident responses (made during the runs); last, incidents inside the safe window, which judges no
+   decision. trapReport() sorts by this list; it is the only place the order is set. */
+const PATTERN_ORDER=['alloc','menu','cert','patch','window'];
 function trapReport(){
   const R=G.results,w=G.world,out=[];
   const incs=R.flatMap(c=>c.incidents);
   const certShare=R.map(c=>{const a=c.rows.filter(r=>r.status==='active');return a.length?a.filter(r=>r.certified).length/a.length:0;});
   const certInc=incs.filter(i=>i.certified).length;
   const boughtCerts=G.plans.filter(p=>p.slhs==='all').length>=2||G.eventLog.some(e=>e.type==='sweep'&&e.choice==='grace');
-  if(boughtCerts&&certInc>0)out.push([T('The certification trap'),T('Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in certified kitchens. A certificate checks the facility on the day of inspection.',{p:pct(Math.max(...certShare)),a:certInc,b:incs.length})+' '+T('Your incidents came from: {list}.',{list:incCauseList(R)})+' '+T('In real life, almost every kitchen linked to 2026 incidents already held SLHS, yet the biggest enforcement action, {s} suspensions, was keyed to SLHS status.',{s:num(P('REAL_SUSPENSIONS'))})]);
+  if(boughtCerts&&certInc>0)out.push([T('The certification trap'),T('Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in certified kitchens. A certificate checks the facility on the day of inspection.',{p:pct(Math.max(...certShare)),a:certInc,b:incs.length})+' '+T('Your incidents came from: {list}.',{list:incCauseList(R)})+' '+T('In real life, almost every kitchen linked to 2026 incidents already held SLHS, yet the biggest enforcement action, {s} suspensions, was keyed to SLHS status.',{s:num(P('REAL_SUSPENSIONS'))}),'cert']);
   const second=sum(w.chains.map(c=>c.second.length)),patched=unfixedSuspensions();
-  if(patched.length>=2)out.push([T('The cheap patch'),T('You answered {n} incidents by suspending the kitchen, with no change to cook-to-serve policy in that province afterwards: {list}.',{n:patched.length,list:moreList(patched.map(i=>`${i.kid} (${periodLabel(i.y)}, ${placeOf(i.rid)})`))})+' '+(second?T('{n} second-order incident(s) followed in kitchens that took redirected children.',{n:second}):T('No second-order incident fired in this run, but trace the chains below: the receiving kitchens carried more runs and longer holds.'))+' '+T('Closing a kitchen moves its children, and its pressure, next door.')]);
+  if(patched.length>=2)out.push([T('The cheap patch'),T('You answered {n} incidents by suspending the kitchen, with no change to cook-to-serve policy in that province afterwards: {list}.',{n:patched.length,list:moreList(patched.map(i=>`${i.kid} (${periodLabel(i.y)}, ${placeOf(i.rid)})`))})+' '+(second?T('{n} second-order incident(s) followed in kitchens that took redirected children.',{n:second}):T('No second-order incident fired in this run, but trace the chains below: the receiving kitchens carried more runs and longer holds.'))+' '+T('Closing a kitchen moves its children, and its pressure, next door.'),'patch']);
   const tot=sum(Object.values(R.reduce((a,c)=>{for(const[m,u]of Object.entries(c.menuUse)){a[m]=(a[m]||0)+u.portions;}return a;},{})));
   const m7=sum(R.map(c=>(c.menuUse.M7||{portions:0}).portions));
   /* Mostly dry pack: a factual note for the player (the designer's version is in the dev panel, designChecks()). It says
@@ -2715,13 +2720,13 @@ function trapReport(){
   if(tot&&m7/tot>=0.5){const up=sum(R.map(c=>(c.menuUse.M7||{up:0}).up))/m7,n=sc(finalLedger().nutrition);
     const safe=!R.some(c=>c.incidents.some(i=>{if(i.menu!=='M7')return false;const x=incCause(i,c);return x&&x.lam!=null&&x.hold>x.lam;}));
     out.push([T('Safe, but not eaten'),(m7/tot>=0.999?T('Your menu was the standard dry pack all year.'):T('{p} of your portions were the standard dry pack.',{p:pct(m7/tot)}))+' '+
-      (safe?T('It stayed inside its safe window, but children ate about {u} of each meal, so nutrition delivered fell to {n}.',{u:pct(up),n}):T('Children ate about {u} of each meal, so nutrition delivered fell to {n}.',{u:pct(up),n}))]);}
+      (safe?T('It stayed inside its safe window, but children ate about {u} of each meal, so nutrition delivered fell to {n}.',{u:pct(up),n}):T('Children ate about {u} of each meal, so nutrition delivered fell to {n}.',{u:pct(up),n})),'menu']);}
   /* Incidents with every portion inside its safe window: the baseline rate, not holding (incCause, presentation only). */
   const inWin=R.flatMap(c=>c.incidents.map(i=>incCause(i,c))).filter(x=>x&&(x.lam==null||x.hold<=x.lam)).length;
-  if(inWin)out.push([T('Incidents inside the safe window'),T('{n} of your {b} incidents happened with food inside its safe window. A baseline risk remains even when holding is safe.',{n:inWin,b:incs.length})]);
+  if(inWin)out.push([T('Incidents inside the safe window'),T('{n} of your {b} incidents happened with food inside its safe window. A baseline risk remains even when holding is safe.',{n:inWin,b:incs.length}),'window']);
   const slow=G.dec.posture==='cautious'||G.plans[0].activation<=0.5;
-  if(slow&&R[0].ledger.absorption<0.7)out.push([T('Excessive caution'),T('The first semester spent {a} of the allocation. The next semester\'s allocation fell to {b} of full coverage, and the one after was {c}. Unspent money is not saved; it is taken back, and the children it was sized for go unfed. In 2025 the real programme spent {r} of its allocation.',{a:pct(R[0].ledger.absorption),b:pct(R[1].ledger.allocFrac),c:pct(R[2].ledger.allocFrac),r:pct(P('REAL_ABSORPTION_2025'),1)})]);
-  return out;
+  if(slow&&R[0].ledger.absorption<0.7)out.push([T('Unspent allocation'),T('The first semester spent {a} of the allocation. The next semester\'s allocation fell to {b} of full coverage, and the one after was {c}. Unspent money is not saved; it is taken back, and the children it was sized for go unfed. In 2025 the real programme spent {r} of its allocation.',{a:pct(R[0].ledger.absorption),b:pct(R[1].ledger.allocFrac),c:pct(R[2].ledger.allocFrac),r:pct(P('REAL_ABSORPTION_2025'),1)}),'alloc']);
+  return out.sort((a,b)=>PATTERN_ORDER.indexOf(a[2])-PATTERN_ORDER.indexOf(b[2]));
 }
 VIEWS.debrief=()=>{const w=G.world,R=G.results;const traps=trapReport();
   const used=[...new Set(R.flatMap(c=>Object.keys(c.menuUse)))];
@@ -3234,7 +3239,7 @@ const I18N={
 "Absorb the higher price this year":{id:"Tanggung harga lebih tinggi tahun ini"},
 "Switch those runs to the fish menu this year":{id:"Ganti putaran itu ke menu ikan tahun ini"},
 "Keep the menu, cut the protein portion":{id:"Pertahankan menu, kurangi porsi protein"},
-"Excessive caution":{id:"Kehati-hatian berlebihan"},
+"Unspent allocation":{id:"Anggaran tak terserap"},
 "Year 1 spent {a} of the allocation. Year 2's allocation fell to {b} of full coverage, and Year 3's was {c}. Unspent money is not saved; it is taken back, and the children it was sized for go unfed. In 2025 the real programme spent {r} of its allocation.":{id:"Tahun 1 membelanjakan {a} dari alokasi. Alokasi Tahun 2 turun menjadi {b} dari cakupan penuh, dan Tahun 3 sebesar {c}. Uang yang tidak terserap tidak disimpan; uang itu ditarik kembali, dan anak-anak yang menjadi dasar perhitungannya tidak makan. Pada 2025 program sebenarnya menyerap {r} dari alokasinya."},
 "Year {y}":{id:"Tahun {y}"},
 "Reach":{id:"Jangkauan"},
