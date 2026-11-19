@@ -5,6 +5,7 @@
 1. Install once: `npm install`
 2. Run the simulation: `npm run dev` (opens http://localhost:3000/ and reloads when a file changes)
 3. Run it with the dev panel: `npm run dev:panel` (opens http://localhost:3000/?dev=1)
+4. Check that the display level never changes the simulation: `npm test` (needs Google Chrome)
 
 No npm? From the project folder, run `python3 -m http.server 8000`, then open http://localhost:8000 (add `?dev=1` for the dev panel). This server doesn't reload automatically.
 

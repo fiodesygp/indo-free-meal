@@ -9,52 +9,62 @@ Single-file educational simulation (index.html) about Indonesia's Makan Bergizi 
 - Section 4: dev panel, enabled with ?dev=1.
 - Translations: I18N, GLOSS_L, INFO_L (en / id). English is the source; Bahasa Indonesia is the only translation. Every player-facing string goes through T().
 
-## Chapters (the learning ladder)
-Five chapters, played in order, shown to players in two parts (internally they stay Ch1–5), after an entry:
-- **Entry (Ch0, not a part):** the Intro page (the "What is MBG?" explainer, moved here from Stage 1's brief), then the Choice page: "Learn supply chain basics first" (path `basics`, starts Practice 1) or "Go straight to the MBG Project" (path `direct`, starts Stage 1; Part 1 never opens). No default; the choice page is the only way to skip the basics. The path can be changed until the player starts deciding (see **Path lock**).
-- **Part 1, Supply Chain Basics:** Practice 1 The Grocery Store (Ch1), Practice 2 The Bakery (Ch2).
-- **Gate:** "Ready for the MBG Project?" (the last page of Ch2, basics path only).
-- **Part 2, The MBG Project:** Stage 1 One Kitchen, One Morning (Ch3), Stage 2 One Region (Ch4), Stage 3 Two Years (Ch5).
+## Flow
+An entry, then the MBG Project's three stages, played in order (internally the stages stay Ch3–5):
+- **Entry (Ch0):** Intro (the "What is MBG?" explainer: the narrated, animated scenes, not a video file) → Calibration → Your level. "Start MBG" (`A.startMbg()`) starts Stage 1.
+- **The MBG Project:** Stage 1 One Kitchen, One Morning (Ch3), Stage 2 One Region (Ch4), Stage 3 Two Years (Ch5).
 
- Ch1–2 are warm-ups with no concept text; they set the "safety stock saved me" instinct that Ch3 breaks. Ch5 is the full simulation (PERIODS = 4 semesters, two years; keep it, and if Ch5 runs long, cut events per period, never semesters).
+Ch5 is the full simulation (PERIODS = 4 semesters, two years; keep it, and if Ch5 runs long, cut events per period, never semesters). Part 1 (the Grocery Store and Bakery warm-ups), the path-choice page and the gate were removed, with `WARMUP`, `W()`, `PARTS`, the brief diagrams, `G.carry.path` and the path lock.
 
-- **State:** `G.chapter`; `G.wu` holds warm-up and Ch3 state; `G.carry` holds what a chapter hands forward; `G.chTimes` holds per-chapter timings (Ch1–5; the entry pages are not timed). `G.carry.path` is `'basics'`, `'direct'` or unset (still on the entry). The game boots on Ch0. `resetGame()` restarts the current chapter and keeps those three. `chapterDefaults()` (start state) and `chapterCarry(n)` (hand-forward) live in Section 2.
-- **Navigation:** `CHAPTER_PAGES` (Section 3) gives each chapter its own page list under the same Brief / Plan / Run / Results categories. `setChapter(n)` swaps `PHASES`, `NAV_CATS` and `YEAR_PHASE0`, and `render()` calls it first. Ch1, Ch3 and Ch4 end on a `bridge` page, Ch2 on the `gate` page, and Ch5 on the debrief; `A.nextChapter()` moves on.
-- **Parts:** `PARTS` (part titles and their chapters), `partOf(n)` (1 or 2; `null` for Ch0), `inPart(n)`, `chLabel(n)` ("Practice 2", "Stage 1") and `chPos(n)` ("The MBG Project · Stage 1 of 3") build every player-facing chapter label. Never show the internal 1–5 numbers to players. `chapterRow()` draws the progress row: an Intro chip, then two labelled groups with a divider (marked while on the gate), with chips numbered within their part. On the direct path Part 1's chips stay visible, greyed out with a dashed number and a "skipped" label. On phones it shows numbers only, plus a caption naming the current part and chapter. Stage 1's brief opens with a "Part 2 · The MBG Project" header card, then the clock card; on the direct path only, it adds the safety-stock line (`C3_SKIP_LINE`, translated).
-- **Entry:** `VIEWS.intro` and `VIEWS.choice`; each choice card has its own button, calling `A.choosePath('basics'|'direct')`, which sets `G.carry.path` and starts Ch1 or Ch3. Restart on the entry goes back to the intro.
-- **Path lock and Back:** Back stays inside a chapter and opens earlier pages view-only (banner and nav both say "Continue →" to return). Exceptions: the choice page's Back returns to the intro as a live page (the intro has no Back), and the first page of the chosen path (Practice 1 brief or Stage 1 brief) Backs to the choice page (`canReopen()` → `A.reopenChoice()`) until `G.carry.pathLocked` is set. `render()` sets it the first time page 2 of any chapter is shown, and nothing clears it (Restart keeps it), so after that no Back reaches the choice page or the intro. `A.reopenChoice()` resets the abandoned path: `G.carry` keeps only `firstPath` and `pathSwitches`, `G.chTimes` is emptied and chapter state is rebuilt. The choice page then shows "You can switch paths until you start making decisions." `A.choosePath()` sets `firstPath` once and counts a switch only when the new pick differs from the last one. Dev jumps: Intro/Choice start a fresh game; jumps to a path's first page leave it unlocked, others lock it.
-- **Gate:** `VIEWS.gate` (one screen, existing card and button styles, no quiz or scoring) shows three takeaways (`GATE_TAKEAWAYS`), what comes next, and two buttons: "Continue to the MBG Project" (primary, `A.nextChapter()`) or "Replay the basics" (secondary, `A.replayBasics()`, which restarts Practice 1). The dev jump has "Intro", "Choice", "Gate" and "Stage 1 on the direct path" targets; jumps to Ch1, Ch2 or the gate set the path to `basics`.
+- **State:** `G.chapter`; `G.wu` holds Stage 1 state; `G.carry` holds what a chapter hands forward, plus the calibration (`calib`, `level`, `calibScore`); `G.chTimes` holds per-stage timings (Ch3–5; the entry is not timed). The game boots on Ch0. `resetGame()` restarts the current chapter and keeps those three. `chapterDefaults()` (start state) and `chapterCarry(n)` (hand-forward) live in Section 2.
+- **Navigation:** `CHAPTER_PAGES` (Section 3) gives each chapter its own page list under the same Brief / Plan / Run / Results categories. `setChapter(n)` swaps `PHASES`, `NAV_CATS` and `YEAR_PHASE0`, and `render()` calls it first. Ch3 and Ch4 end on a `bridge` page and Ch5 on the debrief; `A.nextChapter()` moves on.
+- **Labels:** `STAGES`, `stageOf(n)`, `chLabel(n)` ("Stage 1") and `chPos(n)` ("The MBG Project · Stage 1 of 3") build every player-facing chapter label. Never show the internal 3–5 numbers to players. `chapterRow()` draws the progress row: an Intro chip, a divider, then "The MBG Project" with Stages 1–3. On phones it shows numbers only, plus a caption naming the current stage. Stage 1's brief has the chapter hero, the buffer line (`C3_BUFFER_LINE`: cooked food cannot be held as safety stock) and the clock card.
+- **Back:** Back stays inside a chapter and opens earlier pages view-only (banner and nav both say "Continue →" to return). On the entry it is live: it steps back through the calibration questions to the intro. Once a level is assigned there is no Back on the level page and no Back from Stage 1's brief; the intro's Next skips straight to the level page.
 - **Engine scope:** `CHAPTER_SCOPE` (Section 1), read through `CH()`: periods (`NP()`), events and weather on or off, number of provinces. Ch3–4 reuse the MBG engine with controls gated; do not fork it.
-- **One curve:** Ch2 "Freshness" and Ch3–5 "Safety" are the same `compS()` (S = 1 until λ, then 0.5^((t − λ)/h)). Never write a second implementation.
-- **Warm-up parameters:** `WARMUP` (Section 1), all `src:'estimate'`, read with `W(id)`. Chapter engines: `groceryRound()` (Ch1), `bakeryRound()` (Ch2), `morningOps()` (Ch3, wraps `kitchenOps()` with an optional per-run menu, `plan.runMenu`).
-- **Run shell:** Ch1–3 animate through the warm-up animator (`wuShell` / `wuStart` / `WU_PAINT` / `WU_END` / `WU_LED` / `WU_EVENT`). It uses the same track, readouts, controls and overlay classes as the semester run (`simView`). Results are computed before the animation, so the animation is display only.
-- **Brief diagrams:** Practice 1–2's briefs open with an inline-SVG diagram (`groceryDiagram()`, `bakeryDiagram()`; helpers `dgLab`, `dgArrow`, `DG_ICON`, `dgSay`) in the `.dg-*` token classes: no images, emoji or libraries. Each draws a wide layout (`.dg-w`) and a top-to-bottom phone layout (`.dg-n`) with a viewBox near its rendered width, so labels stay ≥ 11 px at 390 px. Numbers come from `W()`, `B_TRUCK_OPTIONS`, `bakeryAge()` and `compS()`.
-- **Ledger:** `renderHeader()` shows no ledger on the entry, `ledgerWarmup()` tiles in Ch1–3 and the three MBG pairs in Ch4–5.
-- **Feedback:** the record and run log include `chapter` (1–5), `part` (1 or 2), `path` (`'basics'` or `'direct'`, the final path), `firstPath` (the path picked first), `pathSwitches` (times the player switched to the other path), `chapterMinutes` (keys 1–5, `null` for a chapter never opened, so Part 1 on the direct path; accumulated across attempts: `G.chTimes[n]` keeps `acc` for closed attempts and `start`/`end` for the open one), `basicsReplays` (times "Replay the basics" was used), `basicsFirstMin` (first-attempt minutes for Practice 1–2, frozen at the first replay; `null` on the direct path). `skippedWarmups` was removed; `path` replaces it.
+- **One curve:** "Safety" everywhere is `compS()` (S = 1 until λ, then 0.5^((t − λ)/h)). Never write a second implementation.
+- **Stage 1 engine:** `morningOps()` wraps `kitchenOps()` with an optional per-run menu (`plan.runMenu`). It animates through the morning animator (`wuShell` / `wuStart` / `WU_PAINT` / `WU_END` / `WU_LED` / `WU_EVENT`; the `wu` names date from the warm-ups), which uses the same track, readouts, controls and overlay classes as the semester run (`simView`). Results are computed before the animation, so the animation is display only.
+- **Ledger:** `renderHeader()` shows no ledger on the entry, `ledgerWarmup()` tiles in Ch3 and the three MBG pairs in Ch4–5. From the second semester on, each tile shows delta chips against the previous semester (numbers only; none on an unaudited plate value).
+- **Feedback:** the record and run log include `chapter` (3–5), `level`, `calibScore` (0–6), `calibAnswers` (each an index into that item's options as listed in `CALIB`, `null` if unanswered; never shown to players) and `chapterMinutes` (keys 3–5, `null` for a stage never opened; accumulated across attempts: `G.chTimes[n]` keeps `acc` for closed attempts and `start`/`end` for the open one). `path`, `firstPath`, `pathSwitches`, `part`, `basicsReplays` and `basicsFirstMin` were removed.
+
+### Calibration and display levels
+- **Calibration:** `CALIB` (Section 3), six multiple-choice items, one per screen with progress dots, about two minutes. Always "Calibration" / "Kalibrasi", never "test". One point each; `ok` (the correct option) is never rendered, and the player gets no per-item feedback or score, during or after. Item order is fixed; option order is shuffled per item with `Math.random` (`calibState()`), except trailing options pinned with `pin` (Q5's "Either of the above" and "Neither" stay last). `A.calibAnswer(k)` records answers; after the sixth, `calibLevel()` assigns the level: 0–2 Beginner / Pemula, 3–4 Intermediate / Menengah, 5–6 Advanced / Mahir.
+- **Level:** `G.carry.level`, read only through `LV()` (Section 3). Assigned once, no override and no retake: it survives Restart and chapter changes. `VIEWS.level` shows the level's name and one-line description (`LEVELS`) and a single "Start MBG" / "Mulai MBG" button.
+- **Hard rule: the model is identical at every level.** λ, h, run timing, allocation, the viability floor, incident draws and the seed from the decision vector never read the level. Only Section 3 (rendering, pacing, help text, which controls are open, pre-fill) may read it; Section 2 must not mention it. `npm test` (`tests/invariance.mjs`) plays every Ch5 trap scenario at all three levels and requires identical ledgers, events and seeds with zero level reads, and checks that the forecast never reads the level, never builds the decision-vector seed or calls `Math.random`, and never changes the decisions.
+- **What the level changes (Stage 3 unless noted):**
+
+| | Beginner / Pemula | Intermediate / Menengah | Advanced / Mahir |
+|---|---|---|---|
+| Build-time decisions (region, kitchens, cluster radius, build/rent, vehicles, sourcing) | made at build, pre-filled (`levelPrefill()`: the second province, kitchens, posture, sourcing), editable | made at build, region and kitchens pre-filled | made at build, nothing pre-filled beyond Stage 2's carry |
+| Per-semester plan decisions (`LV_UNLOCK`) | activation S1; delivery timing (batch, who eats last, extra vehicles) S2; weekly menu S3; safety and controls (inspectors, training, SLHS, audit) S4 | all from S2 | all from S1 |
+| Holding meter | bars, λ ticks, per-run annotation, "why" line | bars and λ ticks | bars, λ ticks, expandable S(t) formula and parameters |
+| Forecast delta chips | on, plus the "why" line | on, numbers | on, numbers |
+| Ledger (pages that touch only some pairs, `PAGE_PAIRS`) | other pairs collapsed to their title | other pairs dimmed | all at full weight |
+| Hints (any run's slack < `SLACK_HINT` = 15 min; also Stage 1) | appear automatically | "Show a hint" on click | none |
+
+  Sourcing is an irreversible build-time commitment at every level; never make it changeable mid-run. A locked group runs on the value the plan already holds (the posture's defaults, or Stage 2's carry) and shows "Using default — unlocks in Semester N". Decisions outside the table (priorities, budget split) are editable at every level. Stage 2 (Ch4) has no semester staging.
+- **Holding meter and forecast:** `meterHtml()` is added before the nav row by `render()` on Stage 1's plan and on Stages 2–3 from the province page through each semester's plan (`meterOn()`). `forecast()` returns only deterministic physical quantities, from `kitchenOps()` (Stage 1: `morningOps()`) on a copy of the current decisions with no events, no incident draws and no seed: per run, minutes held (the engine's hold, not a formula), λ and h of the meal's weakest component, slack = λ − held, S and portions at risk; plus portions at risk a day and cost a day for all planned kitchens. Stages 2–3 use one typical kitchen per region on the weekday being edited. Never forecast plate value, incidents, uptake or next year's allocation. It is labelled "Forecast" / "Perkiraan". Forecast delta chips show the change from the previous forecast; all chips (`dchip()`) pulse for ~1.5 s, then settle, with no animation under prefers-reduced-motion.
 
 ### Gating map
-| | Practice 1 (Ch1) | Practice 2 (Ch2) | Stage 1 (Ch3) | Stage 2 (Ch4) | Stage 3 (Ch5) |
-|---|---|---|---|---|---|
-| Ledger | Stockouts · Waste | Delivered · Freshness lost | Delivered, Exposure (food safety only) | all three pairs | all three pairs |
-| Brief facts (`BRIEF_ITEMS`) | none (diagram: `groceryDiagram()`) | none (diagram: `bakeryDiagram()`) | clock (the explainer is on the Intro) | unit, who is fed, background (optional) | scale, mission |
-| Decisions | order qty + safety stock per product | trucks, run order, croissant or sourdough per group | run count, meal per run | province (one), radius, size, build/rent, vehicles, sourcing, weekly menu | everything in the full game |
-| Fixed | – | – | 1 vehicle, Teluk Lumba kitchen (30-min leg) | posture "balanced", activation 1, budget split automatic, no events or weather | – |
-| Carries forward | – | – | run menus → Ch4 week | regency, kitchens, sourcing, menu → Ch5 first region | – |
-| Food-cost ceiling | – | – | morning average: Σ runs (portions × meal food cost) ≤ fed × Rp10,000 (`FOOD_CEILING`); over it, "Run the morning" is disabled; not scored | – | – |
+| | Stage 1 (Ch3) | Stage 2 (Ch4) | Stage 3 (Ch5) |
+|---|---|---|---|
+| Ledger | Delivered, Exposure (food safety only) | all three pairs | all three pairs |
+| Brief facts (`BRIEF_ITEMS`) | clock (the explainer is on the Intro) | unit, who is fed, background (optional) | scale, mission |
+| Decisions | run count, meal per run | province (one), radius, size, build/rent, vehicles, sourcing, weekly menu | everything in the full game, opened by level |
+| Fixed | 1 vehicle, Teluk Lumba kitchen (30-min leg) | posture "balanced", activation 1, budget split automatic, no events or weather | – |
+| Carries forward | run menus → Ch4 week | regency, kitchens, sourcing, menu → Ch5 first region | – |
+| Food-cost ceiling | morning average: Σ runs (portions × meal food cost) ≤ fed × Rp10,000 (`FOOD_CEILING`); over it, "Run the morning" is disabled; not scored | – | – |
 
 The Ch3 food-cost ceiling is a modelling decision, not a sourced rule: the sourced Rp10,000 raw-material ceiling is applied as an average per portion across the whole morning (`morningOps()` returns `food`, `foodAvg`, `overCeiling`). It applies in Ch3 only; Ch4–5 keep the existing menu-page handling of the ceiling.
-
-### Skipping the basics
-The `ALLOW_SKIP_WARMUPS` flag, `A.skipWarmups()` and `G.carry.skipped` are gone. The only way past Part 1 is the choice page's direct path.
 
 ## Local development
 - `npm install` once (browser-sync is the only dependency, a devDependency).
 - `npm run dev` serves the project root at http://localhost:3000/ with live reload on *.html, *.css, *.js and *.md. `npm run dev:panel` does the same and opens /?dev=1.
 - No npm: `python3 -m http.server 8000`, then open http://localhost:8000.
-- Deployment stays a plain static index.html on Vercel: do not add a build or start script, Vite or a framework.
+- `npm test` runs the model-invariance test (`tests/invariance.mjs`) in headless Chrome (Node 22+; set `CHROME` if the binary is elsewhere).
+- Deployment stays a plain static index.html on Vercel: do not add a build or start script, Vite or a framework. The `test` script is for development only.
 
 ## Rules
 - Make surgical edits. Never rewrite the whole file.
-- Any new player-facing string must be added to I18N with an id translation (EN / ID only; Spanish was removed). Check new work with the five-chapter walk in EN and ID, on both paths (basics and direct).
+- Any new player-facing string must be added to I18N with an id translation (EN / ID only; Spanish was removed). Check new work with the full walk (intro, calibration, Stages 1–3) in EN and ID at all three levels.
 - Keep the Asphalt design tokens in :root; do not hard-code new colours.
-- After changes, check the page still loads and ?dev=1 autoplay runs without errors. The dev panel can jump to any chapter and autoplay any chapter (`autoplayChapter(n)`). Ch5's trap scenarios must give the same results unless the MBG engine was changed on purpose.
+- After changes, check the page still loads and ?dev=1 autoplay runs without errors. The dev panel can jump to the intro, the calibration, the level page or any stage, set the level (a dev tool, not a player override; it restarts the current chapter so the pre-fill applies), and autoplay any stage (`autoplayChapter(n)`). Ch5's trap scenarios must give the same results unless the MBG engine was changed on purpose, and `npm test` must pass.
