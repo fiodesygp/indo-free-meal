@@ -2652,6 +2652,17 @@ function incCauseList(R){const xs=R.flatMap(c=>c.incidents.map(i=>incCause(i,c))
   const l=[has(x=>x.risk>0)&&T('holding time past the safe window'),has(x=>x.risk>0&&x.cs>1)&&T('crowding'),has(x=>x.risk>0)&&T('process non-compliance'),
     has(x=>x.holdRule)&&T('runs that broke the 4-hour rule'),has(x=>x.legRule)&&T('delivery legs that broke the 30-minute rule'),has(x=>x.risk===0)&&T('the baseline incident rate, even with holding safe')].filter(Boolean);
   return l.length>1?l.slice(0,-1).join(', ')+' '+T('and')+' '+l[l.length-1]:l.join('');}
+/* The cheap patch, per incident: incidents answered with Suspend and not followed by a cook-to-serve policy change
+   in that province. A change is the popup's policy fix for that province later on, or, in the next semester's plan,
+   switching the province to a fresh batch per run or serving a different meal on the incident's weekday. Incidents
+   in the last semester are left out: no plan follows them. */
+function unfixedSuspensions(){const R=G.results||[],out=[];
+  for(const c of R)for(const ev of (c.events||[]).filter(e=>e.type==='incident'&&e.choice==='suspend'))for(const i of ev.list){
+    const prev=G.plans[c.y-1],next=G.plans[c.y];if(!prev||!next)continue;
+    const batch=prev.batch[i.rid]!=='staggered'&&next.batch[i.rid]==='staggered',menu=next.menu[i.dow||0].m!==i.menu;
+    const popup=R.some(c2=>c2.y>c.y&&(c2.events||[]).some(e=>e.type==='incident'&&e.choice==='policy'&&e.list.some(j=>j.rid===i.rid)));
+    if(!batch&&!menu&&!popup)out.push(Object.assign({},i,{y:c.y}));}
+  return out;}
 function trapReport(){
   const R=G.results,w=G.world,out=[];
   const incs=R.flatMap(c=>c.incidents);
@@ -2659,9 +2670,8 @@ function trapReport(){
   const certInc=incs.filter(i=>i.certified).length;
   const boughtCerts=G.plans.filter(p=>p.slhs==='all').length>=2||G.eventLog.some(e=>e.type==='sweep'&&e.choice==='grace');
   if(boughtCerts&&certInc>0)out.push([T('The certification trap'),T('Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in certified kitchens. A certificate checks the facility on the day of inspection.',{p:pct(Math.max(...certShare)),a:certInc,b:incs.length})+' '+T('Your incidents came from: {list}.',{list:incCauseList(R)})+' '+T('In real life, almost every kitchen linked to 2026 incidents already held SLHS, yet the biggest enforcement action, {s} suspensions, was keyed to SLHS status.',{s:num(P('REAL_SUSPENSIONS'))})]);
-  const ir=G.eventLog.filter(e=>e.type==='incident');const nSusp=ir.filter(e=>e.choice==='suspend').length,policy=ir.some(e=>e.choice==='policy');
-  const second=sum(w.chains.map(c=>c.second.length));
-  if(!policy&&(nSusp>=2||(nSusp>=1&&second>0)))out.push([T('The cheap patch'),T('You answered incidents by suspending kitchens {n} time(s) without changing cook-to-serve policy.',{n:nSusp})+' '+(second?T('{n} second-order incident(s) followed in kitchens that took redirected children.',{n:second}):T('No second-order incident fired in this run, but trace the chains below: the receiving kitchens carried more runs and longer holds.'))+' '+T('Closing a kitchen moves its children, and its pressure, next door.')]);
+  const second=sum(w.chains.map(c=>c.second.length)),patched=unfixedSuspensions();
+  if(patched.length>=2)out.push([T('The cheap patch'),T('You answered {n} incidents by suspending the kitchen, with no change to cook-to-serve policy in that province afterwards: {list}.',{n:patched.length,list:patched.map(i=>`${i.kid} (${periodLabel(i.y)}, ${placeOf(i.rid)})`).join('; ')})+' '+(second?T('{n} second-order incident(s) followed in kitchens that took redirected children.',{n:second}):T('No second-order incident fired in this run, but trace the chains below: the receiving kitchens carried more runs and longer holds.'))+' '+T('Closing a kitchen moves its children, and its pressure, next door.')]);
   const tot=sum(Object.values(R.reduce((a,c)=>{for(const[m,u]of Object.entries(c.menuUse)){a[m]=(a[m]||0)+u.portions;}return a;},{})));
   const m7=sum(R.map(c=>(c.menuUse.M7||{portions:0}).portions));
   /* Mostly dry pack: a factual note for the player (the designer's version is in the dev panel, designChecks()). It says
@@ -3178,7 +3188,6 @@ const I18N={
 "delivery legs that broke the 30-minute rule":{id:"rute pengantaran yang melanggar aturan 30 menit"},
 "the baseline incident rate, even with holding safe":{id:"laju insiden dasar, meski waktu tunggu aman"},
 "The cheap patch":{id:"Tambalan murah"},
-"You answered incidents by suspending kitchens {n} time(s) without changing cook-to-serve policy.":{id:"Anda menanggapi insiden dengan menghentikan dapur {n} kali tanpa mengubah kebijakan masak-sampai-saji."},
 "{n} second-order incident(s) followed in kitchens that took redirected children.":{id:"{n} insiden lanjutan terjadi di dapur yang menerima anak alihan."},
 "Closing a kitchen moves its children, and its pressure, next door.":{id:"Menutup dapur memindahkan anak-anaknya, dan tekanannya, ke dapur sebelah."},
 "none":{id:"tidak ada"},
@@ -3626,6 +3635,7 @@ const I18N={
 "corrective":{id:"perbaikan"},
 "No second-order incident fired in this run, but trace the chains below: the receiving kitchens carried more runs and longer holds.":{id:"Tidak ada insiden lanjutan dalam permainan ini, tetapi telusuri rantai di bawah: dapur penerima menanggung lebih banyak putaran dan waktu tunggu lebih lama."},
 "None of the flagged patterns fired in this run.":{id:"Tidak satu pun pola yang ditandai muncul dalam permainan ini."},
+"You answered {n} incidents by suspending the kitchen, with no change to cook-to-serve policy in that province afterwards: {list}.":{id:"Anda menanggapi {n} insiden dengan menghentikan dapurnya, tanpa perubahan kebijakan masak-sampai-saji di provinsi itu sesudahnya: {list}."},
 "Safe, but not eaten":{id:"Aman, tetapi tidak dimakan"},
 "Your menu was the standard dry pack all year.":{id:"Menu Anda adalah paket kering standar sepanjang tahun."},
 "{p} of your portions were the standard dry pack.":{id:"{p} porsi Anda adalah paket kering standar."},
