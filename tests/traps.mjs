@@ -81,10 +81,10 @@ try {
   if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
   if (errors.length) throw new Error('page error: ' + errors.join('; '));
   const { scen, pairs } = r.result.result.value;
-  console.log(`Trap scenarios over ${N} seeds (${CRN ? 'common random numbers' : 'salted decision-vector seeds'}). Means; "single" is the one autoplay draw.\n`);
+  console.log(`Trap scenarios over ${N} seeds (${CRN ? 'common random numbers' : 'salted decision-vector seeds'}). Means.\n`);
   for (const s of scen) {
     console.log(`${s.k}  (${s.label})`);
-    console.log(`  score ${f1(s.score)}  D/E/C ${f1(s.delivered)}/${f1(s.exposure)}/${f1(s.cost)}  ill ${f0(s.ill)}  incidents ${f1(s.incidents)}  second-order ${f1(s.second)}   single: score ${f1(s.single.score)}, ill ${f0(s.single.ill)}`);
+    console.log(`  score ${f1(s.score)}  D/E/C ${f1(s.delivered)}/${f1(s.exposure)}/${f1(s.cost)}  ill ${f0(s.ill)}  incidents ${f1(s.incidents)}  second-order ${f1(s.second)}`);
     const fire = Object.entries(s.fire).map(([t, n]) => `${t} ${pc(n / N)}`).join(', ');
     console.log(`  patterns fired: ${fire || 'none'}\n`);
   }
@@ -93,6 +93,8 @@ try {
     console.log(`${p.control} vs ${p.trap}: score ${f1(c.score)} vs ${f1(t.score)} (${ok ? 'control better in expectation' : 'CONTROL NOT BETTER in expectation'}); control scores higher on ${pc(p.scoreWin)} of seeds; ` +
       `ill ${f0(c.ill)} vs ${f0(t.ill)}, control has fewer ill on ${pc(p.illWin)} of seeds${p.illTie ? ` (tied on ${pc(p.illTie)})` : ''}.`);
   }
+  console.log('\nSingle draw (regression only): the one autoplay draw per scenario, on its own decision-vector seed. Never judge a trap against its control by it.');
+  for (const s of scen) console.log(`  ${s.k}: score ${f1(s.single.score)}, ill ${f0(s.single.ill)}`);
   code = 0;
 } catch (e) { console.error('FAIL: ' + e.message); }
 finally { try { ws && ws.close(); } catch {} chrome.kill(); await sleep(300); try { rmSync(prof, { recursive: true, force: true }); } catch {} process.exit(code); }

@@ -4154,8 +4154,9 @@ function autoplay(scn){
 function designChecks(){const R=G.results||[];if(!R.length)return[];const out=[];
   const tot=sum(Object.values(R.reduce((a,c)=>{for(const[m,u]of Object.entries(c.menuUse||{})){a[m]=(a[m]||0)+u.portions;}return a;},{})));
   const m7=sum(R.map(c=>((c.menuUse||{}).M7||{portions:0}).portions)),L=R[R.length-1].ledger;
-  if(tot&&m7/tot>=0.5){const up=sum(R.map(c=>((c.menuUse||{}).M7||{up:0}).up))/m7;out.push(`Dominant-menu check: ${Math.round(100*m7/tot)}% of portions were the standard dry pack; children ate about ${Math.round(100*up)}% of it. Nutrition finished at ${Math.round(L.nutrition)}, food safety at ${Math.round(L.safety)}, overall ${Math.round(L.score)}. If this run beat the varied-menu control (SCENARIOS.variedMenu) overall, the uptake mechanic is not biting hard enough.`);}
+  if(tot&&m7/tot>=0.5){const up=sum(R.map(c=>((c.menuUse||{}).M7||{up:0}).up))/m7;out.push(`Dominant-menu check: ${Math.round(100*m7/tot)}% of portions were the standard dry pack; children ate about ${Math.round(100*up)}% of it. Nutrition finished at ${Math.round(L.nutrition)}, food safety at ${Math.round(L.safety)}, overall ${Math.round(L.score)}. One run does not show whether the uptake mechanic bites: check npm run traps, where the varied control (SCENARIOS.variedMenu) should beat the dry pack in expectation.`);}
   return out;}
+const DEV_SINGLE_NOTE='Single draws (one seed per scenario, from its decision vector): for smoke testing and regression only. Whether a trap loses to its control is judged by npm run traps (means and win rates over salted seeds), not by these numbers.';
 function runScenarios(){const out={};for(const[k,s]of Object.entries(SCENARIOS))out[k]=autoplay(s);return out;}
 /* Autoplay per chapter: each runs the chapter's engine on a few preset decision sets and reports the results.
    animSec is the run animation's length at 1× (it excludes the player's thinking time). */
@@ -4183,7 +4184,7 @@ function devPanel(){
   const rows=Object.entries(PARAMS).map(([id,p])=>`<tr><td><code>${id}</code></td><td>${p.v}</td><td>${p.unit}</td><td><span class="tag ${p.src[0]}">${p.src}</span></td><td>${esc(p.note)}</td></tr>`).join('');
   return card(`<h2>Dev panel</h2><p class="mute">Visible because the URL has ?dev=1. Autoplay restarts the game.</p>${devStatus()}<div class="row"><label>Jump to chapter <select onchange="A.devJump(this.value)"><option value="intro" ${G.chapter===0&&G.phase===0?'selected':''}>Intro · What is MBG?</option><option value="calib" ${G.chapter===0&&G.phase===1?'selected':''}>Calibration</option><option value="level" ${G.chapter===0&&G.phase===2?'selected':''}>Level result</option>${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n} · Stage ${stageOf(n)}: ${CHAPTER_PAGES[n].title}</option>`).join('')}</select></label><label>Level (dev only) <select onchange="A.devLevel(this.value)">${Object.keys(LEVELS).map(k=>`<option value="${k}" ${k===LV()?'selected':''}>${k}</option>`).join('')}</select></label><button onclick="A.devRun()">Autoplay Chapter 5 trap scenarios</button><label>Autoplay chapter <select id="devch">${CHAPTER_IDS.map(n=>`<option value="${n}" ${n===G.chapter?'selected':''}>${n}</option>`).join('')}</select></label><button onclick="A.devChapter(+document.getElementById('devch').value)">Run</button></div><pre id="devout" style="white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto"></pre><details><summary>Parameter table</summary><table><tr><th>ID</th><th>Value</th><th>Unit</th><th>Label</th><th>Note</th></tr>${rows}</table></details>`);
 }
-A.devRun=()=>{const ch=G.chapter,r=runScenarios();G.chapter=ch;resetGame();render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
+A.devRun=()=>{const ch=G.chapter,r=runScenarios();G.chapter=ch;resetGame();render();document.getElementById('devout').textContent=DEV_SINGLE_NOTE+'\n\n'+JSON.stringify(r,null,1);};
 /* Jumps: Intro and Calibration start a fresh game (no level). The level page and the stages need a level; if none
    was assigned, the jump uses the dev level selector's value (advanced by default). The level selector is a dev
    tool, not a player override: it restarts the current chapter so its pre-fill applies. */
@@ -4191,7 +4192,7 @@ A.devJump=v=>{if(v==='intro'||v==='calib'){G.carry={};G.chTimes={};startChapter(
   if(!G.carry.level)G.carry.level='advanced';
   if(v==='level'){startChapter(0);G.phase=2;render();}else startChapter(+v);};
 A.devLevel=v=>{G.carry.level=v;if(G.chapter===0)render();else startChapter(G.chapter);};
-A.devChapter=n=>{const ch=G.chapter,r=autoplayChapter(n);startChapter(ch);document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
+A.devChapter=n=>{const ch=G.chapter,r=autoplayChapter(n);startChapter(ch);document.getElementById('devout').textContent=(n===5?DEV_SINGLE_NOTE+'\n\n':'')+JSON.stringify(r,null,1);};
 if(typeof window!=='undefined')window.MBG={get G(){return G;},PARAMS,SCENARIOS,autoplay,runScenarios,startChapter,autoplayChapter};
 if(typeof document!=='undefined')render();
 </script>
