@@ -4079,7 +4079,8 @@ const SCENARIOS={
   cheapPatch:{label:'Cheap patch',dec:{siting:{JT:{target:3000,tenure:'build',fleet:2},KB:{target:2500,tenure:'build',fleet:2}},menu:[{m:'M2',a:'none'},{m:'M3',a:'none'},{m:'M3',a:'none'},{m:'M3',a:'none'},{m:'M2',a:'none'}]},choose:{incident:'suspend',sweep:'comply'}},
   cheapPatchFixed:{label:'Cheap patch, control (fixes policy)',dec:{siting:{JT:{target:3000,tenure:'build',fleet:2},KB:{target:2500,tenure:'build',fleet:2}},menu:[{m:'M2',a:'none'},{m:'M3',a:'none'},{m:'M3',a:'none'},{m:'M3',a:'none'},{m:'M2',a:'none'}]},choose:{incident:'policy',sweep:'comply'}},
   dryPack:{label:'Dominant menu: dry pack everywhere',dec:{menu:[0,1,2,3,4].map(()=>({m:'M7',a:'none'}))},choose:{}},
-  variedMenu:{label:'Dominant menu, control: varied',dec:{},choose:{}},
+  // Control: a varied week that stays inside its safe windows (Friday M3, not the fragile M5), so it tests uptake, not safety.
+  variedMenu:{label:'Dominant menu, control: varied',dec:{menu:[{m:'M1',a:'wholeFruit'},{m:'M4',a:'none'},{m:'M3',a:'none'},{m:'M1',a:'none'},{m:'M3',a:'none'}]},choose:{}},
   caution:{label:'Excessive caution',dec:{posture:'cautious'},plan:y=>({inspectors:{JT:3,KB:3},training:{JT:true,KB:true},audit:true}),choose:{}},
 };
 function autoplay(scn){
