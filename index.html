@@ -4034,7 +4034,8 @@ function runScenarios(){const out={};for(const[k,s]of Object.entries(SCENARIOS))
 /* Autoplay per chapter: each runs the chapter's engine on a few preset decision sets and reports the results.
    animSec is the run animation's length at 1× (it excludes the player's thinking time). */
 const CH_AUTOPLAY={
-  3:()=>{const M=(...ids)=>[0,1,2,3].map(i=>({m:ids[Math.min(i,ids.length-1)],a:'none'})),plans={'3 runs, fried chicken':{runs:3,runMenu:M('M1')},'4 runs, fried chicken':{runs:4,runMenu:M('M1')},
+  3:()=>{G.chapter=3;resetGame();setChapter(3);  // a fresh Stage 1 state: after a trap scenario G.dec is BASE_DEC, which has no regency
+    const M=(...ids)=>[0,1,2,3].map(i=>({m:ids[Math.min(i,ids.length-1)],a:'none'})),plans={'3 runs, fried chicken':{runs:3,runMenu:M('M1')},'4 runs, fried chicken':{runs:4,runMenu:M('M1')},
       '3 runs, coconut gravy':{runs:3,runMenu:M('M2')},'4 runs, gravy early, dry pack last':{runs:4,runMenu:M('M2','M2','M1','M7')},'2 runs, gravy':{runs:2,runMenu:M('M2')},'1 run':{runs:1,runMenu:M('M2')}};
     return{runs:Object.fromEntries(Object.entries(plans).map(([k,p])=>{const o=morningOps(p);return[k,{fed:o.fed,held:o.runs.map(r=>Math.round(r.hold)),S:o.runs.map(r=>+r.S.toFixed(2)),risk:Math.round(o.risk),foodAvg:Math.round(o.foodAvg),overCeiling:o.overCeiling,reach:Math.round(o.reach),nutrition:Math.round(o.nutrition),safety:Math.round(o.safety),animSec:c3End(o)*C3_MS_PER_MIN/1000}];}))};},
   4:()=>{const one=(rid,ri,siting,arch)=>{G.chapter=4;resetGame();setChapter(4);Object.assign(G.dec,{regions:[rid],regency:{[rid]:ri},radius:{[rid]:6},siting:{[rid]:siting},sourcing:{arch,rails:false,receipts:false}});
@@ -4064,7 +4065,7 @@ A.devJump=v=>{if(v==='intro'||v==='calib'){G.carry={};G.chTimes={};startChapter(
   if(!G.carry.level)G.carry.level='advanced';
   if(v==='level'){startChapter(0);G.phase=2;render();}else startChapter(+v);};
 A.devLevel=v=>{G.carry.level=v;if(G.chapter===0)render();else startChapter(G.chapter);};
-A.devChapter=n=>{const ch=G.chapter,r=autoplayChapter(n);if(n>=4)startChapter(ch);else render();document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
+A.devChapter=n=>{const ch=G.chapter,r=autoplayChapter(n);startChapter(ch);document.getElementById('devout').textContent=JSON.stringify(r,null,1);};
 if(typeof window!=='undefined')window.MBG={get G(){return G;},PARAMS,SCENARIOS,autoplay,runScenarios,startChapter,autoplayChapter};
 if(typeof document!=='undefined')render();
 </script>
