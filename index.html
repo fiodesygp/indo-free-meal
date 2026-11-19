@@ -1828,7 +1828,7 @@ function regencyMap(rid,opt){
     if(st&&st.st==='susp')extra+=`<path d="M${cx-3.5} ${cy-3.5} L${cx+3.5} ${cy+3.5} M${cx+3.5} ${cy-3.5} L${cx-3.5} ${cy+3.5}" stroke="#fff" stroke-width="1.6"/>`;
     if(st&&st.inc)extra+=`<circle class="inc" cx="${cx}" cy="${cy}" r="9.5"/>`;
     if(st&&st.hl)extra+=`<circle class="hl" cx="${cx}" cy="${cy}" r="13"/>`;
-    const title=st?st.title:T('Kitchen site {i}: {n} schools',{i:i+1,n:k.schools.length});
+    const title=st?st.title:T(k.schools.length===1?'Kitchen site {i}: {n} school':'Kitchen site {i}: {n} schools',{i:i+1,n:k.schools.length});
     s+=`<g class="kit ${st?st.st:'plan'} ${st&&st.pop?'popin':''}" ${st&&st.kid?`data-kid="${st.kid}" data-cx="${cx}" data-cy="${cy}"`:''}><circle class="rad" cx="${cx}" cy="${cy}" r="${(rad*px).toFixed(1)}"/>${lines}<rect class="mk" x="${(cx-4.5).toFixed(1)}" y="${(cy-4.5).toFixed(1)}" width="9" height="9" rx="1.5"/>${extra}<title>${esc(title)}</title></g>`;
   });
   for(const[a,b]of opt.arrows||[]){const p=lay.sites[a],q=lay.sites[b];if(!p||!q)continue;const dx=q.x-p.x,dy=q.y-p.y,L=Math.hypot(dx,dy)||1,sh=8/px;
@@ -2197,7 +2197,7 @@ function c3Results(){const o=G.wu.res;
 ${calcTable([[T(DIMS.reach),`${num(o.fed)} ÷ ${num(o.cap)}`,sc(o.reach)],[T(DIMS.nutrition),T('Σ children × menu fit × nutrient score ÷ children fed'),sc(o.nutrition)],[T(PAIRS.delivered.label),`(${sc(o.reach)} + ${sc(o.nutrition)}) ÷ 2`,`<b>${sc(o.delivered)}</b>`,'tot'],
 [T(DIMS.safety),`100 × (1 − ${num(o.risk)} ÷ ${num(o.fed)})`,`<b>${sc(o.safety)}</b>`,'tot'],
 [T('Food cost per portion'),`${rpFull(Math.round(o.food))} ÷ ${num(o.fed)} (${T('ceiling {c}',{c:rpFull(P('FOOD_CEILING'))})})`,rpFull(Math.round(o.foodAvg))]])}
-${o.runs.filter(r=>r.overLimit).map(r=>`<p class="wuverdict bad">${T('Run {n} broke the 4-hour rule: {c} children ate {m} minutes after cooking ended, past the {l}-minute limit.',{n:r.i+1,c:num(r.portions),m:Math.round(r.hold),l:P('HOLD_LIMIT_MIN')})}</p>`).join('')}<p class="wuverdict ${o.risk>=1?'bad':'good'}">${o.risk>=1?T('About {n} children could fall ill: {p} of the portions at risk, the simulation\'s attack rate.',{n:num(o.ill),p:pct(P('ATTACK_RATE'))}):T('Every child ate inside the safe window.')}</p>${c3Timeline(o,c3End(o))}`)+`</div>`;}
+${o.runs.filter(r=>r.overLimit).map(r=>`<p class="wuverdict bad">${T('Run {n} broke the 4-hour rule: {c} children ate {m} minutes after cooking ended, past the {l}-minute limit.',{n:r.i+1,c:num(r.portions),m:Math.round(r.hold),l:P('HOLD_LIMIT_MIN')})}</p>`).join('')}<p class="wuverdict ${o.risk>=1?'bad':'good'}">${o.risk>=1?T(num(o.ill)==='1'?'About {n} child could fall ill: {p} of the portions at risk, the simulation\'s attack rate.':'About {n} children could fall ill: {p} of the portions at risk, the simulation\'s attack rate.',{n:num(o.ill),p:pct(P('ATTACK_RATE'))}):T('Every child ate inside the safe window.')}</p>${c3Timeline(o,c3End(o))}`)+`</div>`;}
 
 /* ---------- Set-up page 1: priorities + posture ---------- */
 const head=(n,t)=>`<h2><span class="num">${n}</span>${t}</h2>`;
@@ -2233,7 +2233,7 @@ function regionSummary(rid){
   if(s.tenure==='rent')w.push(T('Renting lowers the partner\'s up-front cost, but you control the facility less.'));
   if(rp.runs>=4)w.push(T('Four or more runs cannot fit inside the 4-hour window.'));else if(rp.runs===3)w.push(T('The last run leaves long after cooking ends.'));
   if(s.target>P('CAP_STD'))w.push(T('3,000 portions leaves no spare capacity.'));
-  return`<div class="kv"><div>${T('Kitchen sites')} ${info('coverage')}<br><b>${rp.n}</b></div><div>${T('Per kitchen')} ${info('utilisation')}<br><b>~${num(rp.load)}</b> ${T('portions')}</div><div>${T('Delivery trips per kitchen a day')} ${info('fleet')}<br><b>${rp.runs}</b> <span class="mute">${T('runs')}</span></div></div><details class="why2"><summary>${T('What is a run?')}</summary><p class="mute hint">${T(rp.runs===1?'A run is one round of the kitchen\'s vehicles: load, drive out to schools, come back. When one round cannot carry all of the day\'s portions, the vehicles go again, and every extra run leaves later than the one before. Here: {p} portions ÷ ({v} vehicles × 750 per trip) = {r} run.':'A run is one round of the kitchen\'s vehicles: load, drive out to schools, come back. When one round cannot carry all of the day\'s portions, the vehicles go again, and every extra run leaves later than the one before. Here: {p} portions ÷ ({v} vehicles × 750 per trip) = {r} runs.',{p:num(rp.load),v:G.dec.siting[rid].fleet,r:rp.runs})}</p></details>${w.map(x=>`<div class="note">${x}</div>`).join('')}${econBox(rp,s)}`;
+  return`<div class="kv"><div>${T('Kitchen sites')} ${info('coverage')}<br><b>${rp.n}</b></div><div>${T('Per kitchen')} ${info('utilisation')}<br><b>~${num(rp.load)}</b> ${T('portions')}</div><div>${T('Delivery trips per kitchen a day')} ${info('fleet')}<br><b>${rp.runs}</b> <span class="mute">${T('runs')}</span></div></div><details class="why2"><summary>${T('What is a run?')}</summary><p class="mute hint">${T(rp.runs===1?'A run is one round of the kitchen\'s vehicles: load, drive out to schools, come back. When one round cannot carry all of the day\'s portions, the vehicles go again, and every extra run leaves later than the one before. Here: {p} portions ÷ ({veh} × 750 per trip) = {r} run.':'A run is one round of the kitchen\'s vehicles: load, drive out to schools, come back. When one round cannot carry all of the day\'s portions, the vehicles go again, and every extra run leaves later than the one before. Here: {p} portions ÷ ({veh} × 750 per trip) = {r} runs.',{p:num(rp.load),veh:plural(G.dec.siting[rid].fleet,'{n} vehicle','{n} vehicles'),r:rp.runs})}</p></details>${w.map(x=>`<div class="note">${x}</div>`).join('')}${econBox(rp,s)}`;
 }
 /* Partner economics, from the SPPG's side (not the government's). */
 function econBox(rp,s){
@@ -2481,7 +2481,7 @@ function mountSim(){
 function startToasts(){
   const c=G.ctx,w=G.world;
   for(const rid of G.dec.regions){const ks=w.kitchens.filter(k=>k.rid===rid),open=ks.filter(k=>k.active&&!k.suspended).length,nw=ks.filter(k=>k.activatedYear===c.y).length;
-    toast(`${T('Day {d}',{d:1})} · <b>${KAB(region(rid))}</b>: ${T('{a} of {b} kitchens open',{a:open,b:ks.length})}${nw?` (${T('{n} new this semester',{n:nw})})`:''}.`,'info');}
+    toast(`${T('Day {d}',{d:1})} · <b>${KAB(region(rid))}</b>: ${T(ks.length===1?'{a} of {b} kitchen open':'{a} of {b} kitchens open',{a:open,b:ks.length})}${nw?` (${T('{n} new this semester',{n:nw})})`:''}.`,'info');}
   for(const ch of w.chains.filter(ch=>ch.year===c.y))toast(`<b>${ch.origin}</b> ${T('is suspended')} (${T(ch.cause)}). ${ch.redirects.length?T('Its children now go to {list}.',{list:ch.redirects.map(r=>`<b>${r.to}</b>`).join(' '+T('and')+' ')}):T('No open kitchen nearby: its children go unfed.')}`,'warn');
   if(c.fundFrac<0.999)toast(T('The allocation only funds {p} of planned service days this semester.',{p:pct(c.fundFrac)}),'warn');
 }
@@ -2525,7 +2525,7 @@ function startWeather(e){
   if(e.type!=='slide')a.effects.push({rid:e.rid,type:'detour',from:e.day,to:e.day+e.dur});
   for(const kid of e.kids)a.effects.push({rid:e.rid,kid,type:'skip',from:e.day,to:e.day+e.dur});
   if(e.type==='rain')toast(`${wxIcon('rain')}${day} · ${T('Heavy rain in {kab}: roads are slow and deliveries run late for {n} days.',{kab,n:e.dur})}`,'wx');
-  if(e.type==='flood')toast(`${wxIcon('flood')}${day} · ${T('Flooding in {kab}: {k} kitchens cannot reach their schools for {n} days; the rest drive slowly.',{kab,k:e.kids.length,n:e.dur})}`,'warn');
+  if(e.type==='flood')toast(`${wxIcon('flood')}${day} · ${T(e.kids.length===1?'Flooding in {kab}: {k} kitchen cannot reach its schools for {n} days; the rest drive slowly.':'Flooding in {kab}: {k} kitchens cannot reach their schools for {n} days; the rest drive slowly.',{kab,k:e.kids.length,n:e.dur})}`,'warn');
   if(e.type==='slide')toast(`${wxIcon('slide')}${day} · ${T('Landslide in {kab}: the route from {kid} is blocked for {n} days. Its children go without a meal.',{kab,kid:`<b>${e.kids[0]}</b>`,n:e.dur})}`,'bad');
   for(const kid of e.kids)markBlocked(kid,e.type);
   const sm=$('sm-'+e.rid);if(sm){sm.classList.remove('jolt');void sm.offsetWidth;sm.classList.add('jolt');}
@@ -2714,7 +2714,7 @@ function trapReport(){
   const certShare=R.map(c=>{const a=c.rows.filter(r=>r.status==='active');return a.length?a.filter(r=>r.certified).length/a.length:0;});
   const certInc=incs.filter(i=>i.certified).length;
   const boughtCerts=G.plans.filter(p=>p.slhs==='all').length>=2||G.eventLog.some(e=>e.type==='sweep'&&e.choice==='grace');
-  if(boughtCerts&&certInc>0)out.push([T('The certification trap'),T('Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in certified kitchens. A certificate checks the facility on the day of inspection.',{p:pct(Math.max(...certShare)),a:certInc,b:incs.length})+' '+T('Your incidents came from: {list}.',{list:incCauseList(R)})+' '+T('In real life, almost every kitchen linked to 2026 incidents already held SLHS, yet the biggest enforcement action, {s} suspensions, was keyed to SLHS status.',{s:num(P('REAL_SUSPENSIONS'))}),'cert']);
+  if(boughtCerts&&certInc>0)out.push([T('The certification trap'),T(incs.length===1?'Up to {p} of your open kitchens held a hygiene certificate (SLHS), and your one incident happened in a certified kitchen. A certificate checks the facility on the day of inspection.':certInc===1?'Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in a certified kitchen. A certificate checks the facility on the day of inspection.':'Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in certified kitchens. A certificate checks the facility on the day of inspection.',{p:pct(Math.max(...certShare)),a:certInc,b:incs.length})+' '+T('Your incidents came from: {list}.',{list:incCauseList(R)})+' '+T('In real life, almost every kitchen linked to 2026 incidents already held SLHS, yet the biggest enforcement action, {s} suspensions, was keyed to SLHS status.',{s:num(P('REAL_SUSPENSIONS'))}),'cert']);
   const second=sum(w.chains.map(c=>c.second.length)),patched=unfixedSuspensions();
   if(patched.length>=2)out.push([T('The cheap patch'),T('You answered {n} incidents by suspending the kitchen, with no change to cook-to-serve policy in that province afterwards: {list}.',{n:patched.length,list:moreList(patched.map(i=>`${i.kid} (${periodLabel(i.y)}, ${placeOf(i.rid)})`))})+' '+(second?T(second===1?'{n} second-order incident followed in a kitchen that took redirected children.':'{n} second-order incidents followed in kitchens that took redirected children.',{n:second}):T('No second-order incident fired in this run, but trace the chains below: the receiving kitchens carried more runs and longer holds.'))+' '+T('Closing a kitchen moves its children, and its pressure, next door.'),'patch']);
   const tot=sum(Object.values(R.reduce((a,c)=>{for(const[m,u]of Object.entries(c.menuUse)){a[m]=(a[m]||0)+u.portions;}return a;},{})));
@@ -2727,7 +2727,7 @@ function trapReport(){
       (safe?T('It stayed inside its safe window, but children ate about {u} of each meal, so nutrition delivered fell to {n}.',{u:pct(up),n}):T('Children ate about {u} of each meal, so nutrition delivered fell to {n}.',{u:pct(up),n})),'menu']);}
   /* Incidents with every portion inside its safe window: the baseline rate, not holding (incCause, presentation only). */
   const inWin=R.flatMap(c=>c.incidents.map(i=>incCause(i,c))).filter(x=>x&&(x.lam==null||x.hold<=x.lam)).length;
-  if(inWin)out.push([T('Incidents inside the safe window'),T('{n} of your {b} incidents happened with food inside its safe window. A baseline risk remains even when holding is safe.',{n:inWin,b:incs.length}),'window']);
+  if(inWin)out.push([T('Incidents inside the safe window'),T(incs.length===1?'Your one incident happened with food inside its safe window. A baseline risk remains even when holding is safe.':'{n} of your {b} incidents happened with food inside its safe window. A baseline risk remains even when holding is safe.',{n:inWin,b:incs.length}),'window']);
   const slow=G.dec.posture==='cautious'||G.plans[0].activation<=0.5;
   if(slow&&R[0].ledger.absorption<0.7)out.push([T('Unspent allocation'),T('The first semester spent {a} of the allocation. The next semester\'s allocation fell to {b} of full coverage, and the one after was {c}. Unspent money is not saved; it is taken back, and the children it was sized for go unfed. In 2025 the real programme spent {r} of its allocation.',{a:pct(R[0].ledger.absorption),b:pct(R[1].ledger.allocFrac),c:pct(R[2].ledger.allocFrac),r:pct(P('REAL_ABSORPTION_2025'),1)}),'alloc']);
   return out.sort((a,b)=>PATTERN_ORDER.indexOf(a[2])-PATTERN_ORDER.indexOf(b[2]));
@@ -2879,7 +2879,7 @@ const wxIcon=t=>`<svg class="wxi" viewBox="0 0 24 24" width="20" height="20" ari
 function weatherSummary(c){
   const wx=c.weather||[];if(!wx.length)return'';
   const lost=c.wxLost||0;
-  return`<h3>${T('Weather this semester')}</h3><div class="evlist">${wx.map(e=>`<div class="evitem wx-${e.type}">${wxIcon(e.type).replace('width="20" height="20"','width="40" height="40"')}<div><b>${T(WX_LABEL[e.type])}</b> · ${KAB(region(e.rid))} · ${T('day {d}, {n} days',{d:Math.round(e.day),n:e.dur})}<br><span class="mute">${e.type==='rain'?T('Every route slower; later runs held longer.'):e.type==='flood'?T('{k} kitchens cut off; the rest slowed.',{k:e.kids.length}):T('{kid} cut off; its children unfed.',{kid:e.kids[0]})}</span></div></div>`).join('')}</div>${lost?`<p class="mute hint">${T('Meals that could not be delivered because of weather: about {n}.',{n:num(lost)})}</p>`:''}`;
+  return`<h3>${T('Weather this semester')}</h3><div class="evlist">${wx.map(e=>`<div class="evitem wx-${e.type}">${wxIcon(e.type).replace('width="20" height="20"','width="40" height="40"')}<div><b>${T(WX_LABEL[e.type])}</b> · ${KAB(region(e.rid))} · ${T('day {d}, {n} days',{d:Math.round(e.day),n:e.dur})}<br><span class="mute">${e.type==='rain'?T('Every route slower; later runs held longer.'):e.type==='flood'?T(e.kids.length===1?'{k} kitchen cut off; the rest slowed.':'{k} kitchens cut off; the rest slowed.',{k:e.kids.length}):T('{kid} cut off; its children unfed.',{kid:e.kids[0]})}</span></div></div>`).join('')}</div>${lost?`<p class="mute hint">${T('Meals that could not be delivered because of weather: about {n}.',{n:num(lost)})}</p>`:''}`;
 }
 
 /* ---------- Brief: "What is MBG?" explainer ----------
@@ -3160,6 +3160,7 @@ const I18N={
 "Portions at risk on a run = children × (1 − S). S is the safe share of a meal: 1 until λ, then halving every h minutes. A meal is as safe as its weakest component.":{id:"Porsi berisiko pada satu pengantaran = anak × (1 − S). S adalah porsi aman dari sebuah menu: 1 sampai λ, lalu separuh setiap h menit. Sebuah menu seaman komponen terlemahnya."},
 "Σ children × menu fit × nutrient score ÷ children fed":{id:"Σ anak × kecocokan menu × skor gizi ÷ anak yang makan"},
 "About {n} children could fall ill: {p} of the portions at risk, the simulation's attack rate.":{id:"Sekitar {n} anak bisa jatuh sakit: {p} dari porsi berisiko, tingkat serangan dalam simulasi ini."},
+"About {n} child could fall ill: {p} of the portions at risk, the simulation's attack rate.":{id:"Sekitar {n} anak bisa jatuh sakit: {p} dari porsi berisiko, tingkat serangan dalam simulasi ini."},
 "Every child ate inside the safe window.":{id:"Setiap anak makan dalam batas aman."},
 "Runs delivered":{id:"Pengantaran tiba"},
 "Morning complete":{id:"Pagi selesai"},
@@ -3220,6 +3221,8 @@ const I18N={
 "Note the finding and continue":{id:"Catat temuan dan lanjutkan"},
 "The certification trap":{id:"Jebakan sertifikasi"},
 "Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in certified kitchens. A certificate checks the facility on the day of inspection.":{id:"Hingga {p} dapur Anda yang buka memegang sertifikat higiene (SLHS), dan {a} dari {b} insiden terjadi di dapur bersertifikat. Sertifikat memeriksa fasilitas pada hari inspeksi."},
+"Up to {p} of your open kitchens held a hygiene certificate (SLHS), and your one incident happened in a certified kitchen. A certificate checks the facility on the day of inspection.":{id:"Hingga {p} dapur Anda yang buka memegang sertifikat higiene (SLHS), dan satu-satunya insiden Anda terjadi di dapur bersertifikat. Sertifikat memeriksa fasilitas pada hari inspeksi."},
+"Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in a certified kitchen. A certificate checks the facility on the day of inspection.":{id:"Hingga {p} dapur Anda yang buka memegang sertifikat higiene (SLHS), dan {a} dari {b} insiden terjadi di dapur bersertifikat. Sertifikat memeriksa fasilitas pada hari inspeksi."},
 "Your incidents came from: {list}.":{id:"Insiden Anda berasal dari: {list}."},
 "In real life, almost every kitchen linked to 2026 incidents already held SLHS, yet the biggest enforcement action, {s} suspensions, was keyed to SLHS status.":{id:"Di dunia nyata, hampir semua dapur yang terkait insiden 2026 sudah memegang SLHS, tetapi penindakan terbesar, {s} penghentian, didasarkan pada status SLHS."},
 "holding time past the safe window":{id:"waktu tunggu melewati jendela aman"},
@@ -3586,6 +3589,7 @@ const I18N={
 "Schools and kitchens in {kab}":{id:"Sekolah dan dapur di {kab}"},
 "Set how far each kitchen reaches and how big it is; the kitchen sites re-plan as you drag.":{id:"Atur seberapa jauh jangkauan tiap dapur dan seberapa besar; lokasi dapur direncanakan ulang saat Anda menggeser."},
 "Kitchen site {i}: {n} schools":{id:"Lokasi dapur {i}: {n} sekolah"},
+"Kitchen site {i}: {n} school":{id:"Lokasi dapur {i}: {n} sekolah"},
 "Cluster radius":{id:"Radius klaster"},
 "The rule is 6 km and 30 minutes. Tighter clusters mean more, smaller kitchens.":{id:"Aturannya 6 km dan 30 menit. Klaster yang lebih rapat berarti lebih banyak dapur yang lebih kecil."},
 "Kitchen size":{id:"Ukuran dapur"},
@@ -3659,6 +3663,7 @@ const I18N={
 "A decision will be needed here":{id:"Di sini akan perlu keputusan"},
 "Day {d}":{id:"Hari {d}"},
 "{a} of {b} kitchens open":{id:"{a} dari {b} dapur buka"},
+"{a} of {b} kitchen open":{id:"{a} dari {b} dapur buka"},
 "{n} new this year":{id:"{n} baru tahun ini"},
 "is suspended":{id:"dihentikan"},
 "Its children now go to {list}.":{id:"Anak-anaknya kini dialihkan ke {list}."},
@@ -3690,6 +3695,7 @@ const I18N={
 "Children ate about {u} of each meal, so nutrition delivered fell to {n}.":{id:"Anak-anak hanya memakan sekitar {u} dari setiap porsi, sehingga gizi yang tersampaikan turun menjadi {n}."},
 "Incidents inside the safe window":{id:"Insiden di dalam jendela aman"},
 "{n} of your {b} incidents happened with food inside its safe window. A baseline risk remains even when holding is safe.":{id:"{n} dari {b} insiden Anda terjadi saat makanan masih di dalam jendela amannya. Risiko dasar tetap ada meski waktu tunggu aman."},
+"Your one incident happened with food inside its safe window. A baseline risk remains even when holding is safe.":{id:"Satu-satunya insiden Anda terjadi saat makanan masih di dalam jendela amannya. Risiko dasar tetap ada meski waktu tunggu aman."},
 "No kitchen was suspended.":{id:"Tidak ada dapur yang dihentikan."},
 "you saw 100%":{id:"Anda melihat 100%"},
 "Restart from the brief? This run will be lost.":{id:"Mulai ulang dari pengarahan? Permainan ini akan hilang."},
@@ -3846,10 +3852,13 @@ const I18N={
 "day {d}, {n} days":{id:"hari ke-{d}, {n} hari"},
 "Every route slower; later runs held longer.":{id:"Semua rute melambat; putaran akhir menunggu lebih lama."},
 "{k} kitchens cut off; the rest slowed.":{id:"{k} dapur terputus; sisanya melambat."},
+"{k} kitchen cut off; the rest slowed.":{id:"{k} dapur terputus; sisanya melambat."},
 "{kid} cut off; its children unfed.":{id:"{kid} terputus; anak-anaknya tidak makan."},
 "Meals that could not be delivered because of weather: about {n}.":{id:"Makanan yang tidak bisa diantar karena cuaca: sekitar {n}."},
 "Your week":{id:"Minggu Anda"},
 "Variety":{id:"Keragaman"},
+"{n} vehicle":{id:"{n} kendaraan"},
+"{n} vehicles":{id:"{n} kendaraan"},
 "{n} different meal":{id:"{n} menu berbeda"},
 "{n} different meals":{id:"{n} menu berbeda"},
 "Children eat {p} of what they would eat of a fully varied week.":{id:"Anak-anak makan {p} dari yang akan mereka makan jika menunya beragam penuh."},
@@ -3885,6 +3894,7 @@ const I18N={
 "assigning to {day}":{id:"menetapkan untuk {day}"},
 "Heavy rain in {kab}: roads are slow and deliveries run late for {n} days.":{id:"Hujan lebat di {kab}: jalan melambat dan pengantaran terlambat selama {n} hari."},
 "Flooding in {kab}: {k} kitchens cannot reach their schools for {n} days; the rest drive slowly.":{id:"Banjir di {kab}: {k} dapur tidak bisa mencapai sekolahnya selama {n} hari; sisanya berjalan lambat."},
+"Flooding in {kab}: {k} kitchen cannot reach its schools for {n} days; the rest drive slowly.":{id:"Banjir di {kab}: {k} dapur tidak bisa mencapai sekolahnya selama {n} hari; sisanya berjalan lambat."},
 "Landslide in {kab}: the route from {kid} is blocked for {n} days. Its children go without a meal.":{id:"Longsor di {kab}: rute dari {kid} tertutup selama {n} hari. Anak-anaknya tidak mendapat makanan."},
 "{dow}, run {a} of {b}, eaten {m} min after cooking ({menu}).":{id:"{dow}, putaran {a} dari {b}, dimakan {m} menit setelah dimasak ({menu})."},
 "Your budget envelopes":{id:"Amplop anggaran Anda"},
@@ -3986,8 +3996,8 @@ const I18N={
 "Change regency":{id:"Ganti kabupaten"},
 "Delivery trips per kitchen a day":{id:"Perjalanan antar per dapur per hari"},
 "runs":{id:"putaran"},
-"A run is one round of the kitchen's vehicles: load, drive out to schools, come back. When one round cannot carry all of the day's portions, the vehicles go again, and every extra run leaves later than the one before. Here: {p} portions ÷ ({v} vehicles × 750 per trip) = {r} run.":{id:"Satu putaran adalah satu kali jalan kendaraan dapur: muat, antar ke sekolah, kembali. Jika satu putaran tidak bisa membawa semua porsi hari itu, kendaraan berangkat lagi, dan setiap putaran tambahan berangkat lebih lambat dari sebelumnya. Di sini: {p} porsi ÷ ({v} kendaraan × 750 per perjalanan) = {r} putaran."},
-"A run is one round of the kitchen's vehicles: load, drive out to schools, come back. When one round cannot carry all of the day's portions, the vehicles go again, and every extra run leaves later than the one before. Here: {p} portions ÷ ({v} vehicles × 750 per trip) = {r} runs.":{id:"Satu putaran adalah satu kali jalan kendaraan dapur: muat, antar ke sekolah, kembali. Jika satu putaran tidak bisa membawa semua porsi hari itu, kendaraan berangkat lagi, dan setiap putaran tambahan berangkat lebih lambat dari sebelumnya. Di sini: {p} porsi ÷ ({v} kendaraan × 750 per perjalanan) = {r} putaran."},
+"A run is one round of the kitchen's vehicles: load, drive out to schools, come back. When one round cannot carry all of the day's portions, the vehicles go again, and every extra run leaves later than the one before. Here: {p} portions ÷ ({veh} × 750 per trip) = {r} run.":{id:"Satu putaran adalah satu kali jalan kendaraan dapur: muat, antar ke sekolah, kembali. Jika satu putaran tidak bisa membawa semua porsi hari itu, kendaraan berangkat lagi, dan setiap putaran tambahan berangkat lebih lambat dari sebelumnya. Di sini: {p} porsi ÷ ({veh} × 750 per perjalanan) = {r} putaran."},
+"A run is one round of the kitchen's vehicles: load, drive out to schools, come back. When one round cannot carry all of the day's portions, the vehicles go again, and every extra run leaves later than the one before. Here: {p} portions ÷ ({veh} × 750 per trip) = {r} runs.":{id:"Satu putaran adalah satu kali jalan kendaraan dapur: muat, antar ke sekolah, kembali. Jika satu putaran tidak bisa membawa semua porsi hari itu, kendaraan berangkat lagi, dan setiap putaran tambahan berangkat lebih lambat dari sebelumnya. Di sini: {p} porsi ÷ ({veh} × 750 per perjalanan) = {r} putaran."},
 "Close":{id:"Tutup"},
 "Three candidate regencies in {prov}. They differ in schoolchildren, roads, how spread out schools are, and land price. All are invented.":{id:"Tiga kabupaten calon di {prov}. Ketiganya berbeda dalam jumlah anak sekolah, jalan, sebaran sekolah, dan harga tanah. Semuanya fiktif."},
 "What do the cooking options mean?":{id:"Apa arti pilihan memasak?"},
