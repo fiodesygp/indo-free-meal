@@ -2644,13 +2644,18 @@ VIEWS.score=()=>{const L=finalLedger();const R=G.results;
   return card(`<h2>${T('Scorecard')}</h2><div class="scorebig"><div><small>${T('Your overall score')}</small><b data-cu="${L.score}">${sc(L.score)}</b><span>/ 100</span></div><p>${T('Weighted by the priorities you set: {w}. Reorder them on the Priorities page and this number changes; the kitchens do not.',{w:W})}</p></div>${pairChart()}<div class="kv" style="margin-top:10px">${['delivered','exposure','cost'].map(id=>`<div>${T(PAIRS[id].label)}<br><b>${sc(L[id])}</b> <span class="mute">${T('you ranked it #{a}; it finished #{b}',{a:G.dec.values.indexOf(id)+1,b:ranked.indexOf(id)+1})}</span></div>`).join('')}</div><h3>${T('Semester by semester')}</h3>${tbl}
 <h3>${T('Your network at the end of Year 2')}</h3>${mapsRow(rid=>regencyMap(rid,{ks:statusFromRows(R[NP()-1],rid),arrows:arrowsFor(NP(),rid)}),true)}<div class="row" style="margin-top:12px"><button class="ghost" onclick="A.downloadLog()">${T('Download run log (JSON)')}</button><span class="mute" style="font-size:12px">${T('Decision hash {h}',{h:seedHex('final')})}</span></div>`+navRow(nextLbl(YEAR_PHASE0+NP()+2)));};
 
+/* The causes that actually applied to the player's incidents (incCause: the engine's values), in a fixed order. */
+function incCauseList(R){const xs=R.flatMap(c=>c.incidents.map(i=>incCause(i,c))).filter(Boolean),has=f=>xs.some(f);
+  const l=[has(x=>x.risk>0)&&T('holding time past the safe window'),has(x=>x.risk>0&&x.cs>1)&&T('crowding'),has(x=>x.risk>0)&&T('process non-compliance'),
+    has(x=>x.holdRule)&&T('runs that broke the 4-hour rule'),has(x=>x.legRule)&&T('delivery legs that broke the 30-minute rule'),has(x=>x.risk===0)&&T('the baseline incident rate, even with holding safe')].filter(Boolean);
+  return l.length>1?l.slice(0,-1).join(', ')+' '+T('and')+' '+l[l.length-1]:l.join('');}
 function trapReport(){
   const R=G.results,w=G.world,out=[];
   const incs=R.flatMap(c=>c.incidents);
   const certShare=R.map(c=>{const a=c.rows.filter(r=>r.status==='active');return a.length?a.filter(r=>r.certified).length/a.length:0;});
   const certInc=incs.filter(i=>i.certified).length;
   const boughtCerts=G.plans.filter(p=>p.slhs==='all').length>=2||G.eventLog.some(e=>e.type==='sweep'&&e.choice==='grace');
-  if(boughtCerts&&certInc>0)out.push([T('The certification trap'),T('Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in certified kitchens. A certificate checks the facility on the day of inspection. The incidents came from what happens every morning: holding time, crowding and process compliance. In real life, almost every kitchen linked to 2026 incidents already held SLHS, yet the biggest enforcement action, {s} suspensions, was keyed to SLHS status.',{p:pct(Math.max(...certShare)),a:certInc,b:incs.length,s:num(P('REAL_SUSPENSIONS'))})]);
+  if(boughtCerts&&certInc>0)out.push([T('The certification trap'),T('Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in certified kitchens. A certificate checks the facility on the day of inspection.',{p:pct(Math.max(...certShare)),a:certInc,b:incs.length})+' '+T('Your incidents came from: {list}.',{list:incCauseList(R)})+' '+T('In real life, almost every kitchen linked to 2026 incidents already held SLHS, yet the biggest enforcement action, {s} suspensions, was keyed to SLHS status.',{s:num(P('REAL_SUSPENSIONS'))})]);
   const ir=G.eventLog.filter(e=>e.type==='incident');const nSusp=ir.filter(e=>e.choice==='suspend').length,policy=ir.some(e=>e.choice==='policy');
   const second=sum(w.chains.map(c=>c.second.length));
   if(!policy&&(nSusp>=2||(nSusp>=1&&second>0)))out.push([T('The cheap patch'),T('You answered incidents by suspending kitchens {n} time(s) without changing cook-to-serve policy.',{n:nSusp})+' '+(second?T('{n} second-order incident(s) followed in kitchens that took redirected children.',{n:second}):T('No second-order incident fired in this run, but trace the chains below: the receiving kitchens carried more runs and longer holds.'))+' '+T('Closing a kitchen moves its children, and its pressure, next door.')]);
@@ -3155,7 +3160,15 @@ const I18N={
 "Adopt receipt verification from next year":{id:"Terapkan verifikasi kuitansi mulai tahun depan"},
 "Note the finding and continue":{id:"Catat temuan dan lanjutkan"},
 "The certification trap":{id:"Jebakan sertifikasi"},
-"Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in certified kitchens. A certificate checks the facility on the day of inspection. The incidents came from what happens every morning: holding time, crowding and process compliance. In real life, almost every kitchen linked to 2026 incidents already held SLHS, yet the biggest enforcement action, {s} suspensions, was keyed to SLHS status.":{id:"Hingga {p} dapur Anda yang buka memegang sertifikat higiene (SLHS), dan {a} dari {b} insiden terjadi di dapur bersertifikat. Sertifikat memeriksa fasilitas pada hari inspeksi. Insiden datang dari apa yang terjadi setiap pagi: lama penyimpanan, kepadatan, dan kepatuhan prosedur. Di dunia nyata, hampir semua dapur yang terkait insiden 2026 sudah memegang SLHS, tetapi penindakan terbesar, {s} penghentian, didasarkan pada status SLHS."},
+"Up to {p} of your open kitchens held a hygiene certificate (SLHS), and {a} of your {b} incidents happened in certified kitchens. A certificate checks the facility on the day of inspection.":{id:"Hingga {p} dapur Anda yang buka memegang sertifikat higiene (SLHS), dan {a} dari {b} insiden terjadi di dapur bersertifikat. Sertifikat memeriksa fasilitas pada hari inspeksi."},
+"Your incidents came from: {list}.":{id:"Insiden Anda berasal dari: {list}."},
+"In real life, almost every kitchen linked to 2026 incidents already held SLHS, yet the biggest enforcement action, {s} suspensions, was keyed to SLHS status.":{id:"Di dunia nyata, hampir semua dapur yang terkait insiden 2026 sudah memegang SLHS, tetapi penindakan terbesar, {s} penghentian, didasarkan pada status SLHS."},
+"holding time past the safe window":{id:"waktu tunggu melewati jendela aman"},
+"crowding":{id:"kepadatan"},
+"process non-compliance":{id:"ketidakpatuhan prosedur"},
+"runs that broke the 4-hour rule":{id:"putaran yang melanggar aturan 4 jam"},
+"delivery legs that broke the 30-minute rule":{id:"rute pengantaran yang melanggar aturan 30 menit"},
+"the baseline incident rate, even with holding safe":{id:"laju insiden dasar, meski waktu tunggu aman"},
 "The cheap patch":{id:"Tambalan murah"},
 "You answered incidents by suspending kitchens {n} time(s) without changing cook-to-serve policy.":{id:"Anda menanggapi insiden dengan menghentikan dapur {n} kali tanpa mengubah kebijakan masak-sampai-saji."},
 "{n} second-order incident(s) followed in kitchens that took redirected children.":{id:"{n} insiden lanjutan terjadi di dapur yang menerima anak alihan."},
